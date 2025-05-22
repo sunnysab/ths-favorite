@@ -12,17 +12,17 @@
 
 ## 安装方法
 
-### 1. 安装依赖
-
-```bash
-pip install httpx browser-cookie3
-```
-
-### 2. 克隆代码库
+### 1. 克隆代码库
 
 ```bash
 git clone https://github.com/yourusername/ths-collection.git
 cd ths-collection
+```
+
+### 2. 安装依赖
+
+```bash
+pip install httpx browser-cookie3
 ```
 
 ## 使用示例
