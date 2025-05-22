@@ -22,7 +22,7 @@ cd ths-collection
 ### 2. 安装依赖
 
 ```bash
-pip install httpx browser-cookie3
+pip install -r requirements.txt
 ```
 
 ## 使用示例
