@@ -15,7 +15,7 @@
 ### 1. 克隆代码库
 
 ```bash
-git clone https://github.com/yourusername/ths-collection.git
+git clone https://github.com/sunnysab/ths-favorite.git
 cd ths-collection
 ```
 
@@ -30,10 +30,10 @@ pip install httpx browser-cookie3
 ### 基本用法
 
 ```python
-from collection import THSUserGroups
+from favorite import THSUserFavorite
 
 # 创建实例，自动从浏览器获取 Cookie
-with THSUserGroups() as ths:
+with THSUserFavorite() as ths:
     # 获取所有分组
     groups = ths.get_all_groups()
     

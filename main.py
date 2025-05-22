@@ -3,10 +3,10 @@
 
 import argparse
 import sys
-from collection import THSUserGroups
+from favorite import THSUserFavorite
 
 
-def list_groups(ths: THSUserGroups):
+def list_groups(ths: THSUserFavorite):
     """列出所有分组及其股票数量"""
     groups = ths.get_all_groups()
     print(f"共有 {len(groups)} 个分组:")
@@ -15,7 +15,7 @@ def list_groups(ths: THSUserGroups):
         print(f"- {name} (ID: {group.group_id}, 股票数量: {len(group.items)})")
 
 
-def list_stocks(ths: THSUserGroups, group_name: str):
+def list_stocks(ths: THSUserFavorite, group_name: str):
     """列出指定分组中的所有股票"""
     groups = ths.get_all_groups()
     
@@ -51,7 +51,7 @@ def main():
     args = parser.parse_args()
     
     # 创建 THSUserGroups 实例
-    with THSUserGroups() as ths:
+    with THSUserFavorite() as ths:
         # 处理命令
         if args.command == "list":
             if args.group:

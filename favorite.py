@@ -205,8 +205,7 @@ class THSHttpApiClient:
         return None  # 允许异常传播
 
 
-
-class THSUserGroups:
+class THSUserFavorite:
     _API_BASE_URL = "https://ugc.10jqka.com.cn"
     _QUERY_ENDPOINT = "/optdata/selfgroup/open/api/group/v1/query"
     _ADD_ITEM_ENDPOINT = "/optdata/selfgroup/open/api/content/v1/add"
@@ -571,7 +570,7 @@ class THSUserGroups:
 
 if __name__ == "__main__":
     # 测试代码
-    with THSUserGroups() as ths_user_groups:
+    with THSUserFavorite() as ths_user_groups:
         # 先获取所有分组，以初始化版本号和缓存
         all_groups = ths_user_groups.get_all_groups()
         print(all_groups)
