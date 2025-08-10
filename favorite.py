@@ -196,6 +196,7 @@ class THSHttpApiClient:
         logger.info(f"发送 {method} 请求到 {full_url}")
         logger.debug(f"请求参数: {params}, 表单数据: {data}, JSON载荷: {json_payload is not None}")
 
+        response = None
         try:
             response: httpx.Response = self._client.request(
                 method,
@@ -225,7 +226,13 @@ class THSHttpApiClient:
             logger.error(f"请求错误 ({method} {full_url}): {e}")
             raise
         except json.JSONDecodeError as e:
-            logger.error(f"JSON解码错误 ({method} {full_url}): {e}. 响应文本: {response.text[:200]}...")
+            resp_text_preview = ''
+            try:
+                # 在此作用域中，response 仅在 try 块成功时存在
+                resp_text_preview = response.text[:200]  # type: ignore[name-defined]
+            except Exception:
+                pass
+            logger.error(f"JSON解码错误 ({method} {full_url}): {e}. 响应文本: {resp_text_preview}...")
             raise
 
 
@@ -532,18 +539,15 @@ class THSUserFavorite:
                                    ) -> Optional[Dict[str, Any]]:
         logger.info(f"准备 {action_name} 项目 '{item_code}' (类型: {api_item_type_code}) 到分组ID '{group_id}'，API端点: {endpoint}")
 
+        # 自动确保版本号存在：如果当前版本号未知，则主动从API刷新一次分组（不使用缓存）
         if self._current_version is None:
-            logger.error(f"{action_name}项目失败：未能确定有效的自选列表版本号。请先成功调用 get_all_groups()。")
-            # 考虑是否在此处强制获取版本，或者让上层逻辑处理
-            # logger.info("尝试自动获取最新版本号...")
-            # self.get_all_groups(use_cache=False)
-            # if self._current_version is None:
-            #     logger.error("仍然无法获取版本号，操作终止。")
-            #     return None
-            # else:
-            #     logger.info(f"已获取到最新版本号: {self._current_version}，继续操作...")
-            return None
-
+            logger.info(f"当前版本号未知，自动调用 get_all_groups() 以获取版本号后再执行{action_name}操作…")
+            self.get_all_groups(use_cache=False)
+            if self._current_version is None:
+                logger.error(f"{action_name}项目失败：仍未能获取有效的自选列表版本号（调用 get_all_groups() 后依旧为 None）。")
+                return None
+            else:
+                logger.debug(f"已自动获取到版本号: {self._current_version}，继续后续 {action_name} 操作。")
 
         payload: Dict[str, str] = {
             "version": str(self._current_version),
