@@ -3,7 +3,7 @@
 一个用于管理同花顺自选股的 Python 工具，支持从浏览器获取登录状态，自动同步自选股分组数据，以及添加/删除自选股项目。
 
 > [!NOTE]
-> 该项目代码主要由 AI 编写，可能存在一些 Bug 或考虑不周的地方。如有改进需求可以提 issue 或 PR。
+> 该项目代码主要由 AI 编写，可能存在一些 Bug 或考虑不周的地方。如有改进需求可以提 issue 或 pull request。
 
 ## 项目功能
 
@@ -71,6 +71,30 @@ with THSUserFavorite() as ths:
     # 从分组删除股票
     ths.delete_item_from_group("消费", "600519.SH")
 ```
+
+#### 命令行基本用法
+
+命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--browser`, `--username`, `--password`, `--cookie-cache`）。常见操作如下：
+
+```bash
+# 列出全部分组或查看单个分组
+python main.py list
+python main.py list -g 消费
+
+# 添加 / 删除股票（代码格式为 CODE.MARKET）
+python main.py add 消费 600519.SH
+python main.py delete 消费 600519.SH
+
+# 管理和分享分组
+python main.py group-add "长线跟踪"
+python main.py group-delete 消费
+python main.py group-share 消费 604800
+
+# 使用账号密码登录再执行命令
+python main.py --auth-method credentials --username 13300000000 --password yourpass list
+```
+
+详细 CLI 与 API 说明请参见 [使用指南](TUTORIAL.md)。
 
 ## Cookie 获取与缓存
 
