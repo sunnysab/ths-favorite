@@ -45,6 +45,18 @@ pip install browser-cookie3
 
 注意，`browser-cookie3` 库用于读取浏览器的 Cookie。在 Windows 下，它依赖了卷影服务以强行读出存储文件（[原理](https://www.cnblogs.com/zpchcbd/p/18860664)，[issue](https://github.com/sunnysab/ths-favorite/issues/2)），该操作**需要管理员权限**（[shadowcopy](https://pypi.org/project/shadowcopy/)）。请阅读代码并了解潜在的安全风险。
 
+## 配置
+
+所有常量（User-Agent、缓存文件路径、API URL 等）均集中在 `config.py` 中。作为库使用时，推荐直接修改该文件或在运行前以 `import config` 的方式动态覆盖对应常量：
+
+```python
+import config
+config.DEFAULT_HEADERS["User-Agent"] = "MyCustomUA/1.0"
+config.COOKIE_CACHE_FILE = "/tmp/ths_cookies.json"
+```
+
+调整配置时只需修改 `config.py` 或在应用启动阶段覆写上述常量即可。
+
 ## 使用示例
 
 ### 基本用法

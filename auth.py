@@ -21,6 +21,8 @@ import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from cookie import parse_cookie_header
+
 AUTH_BASE = "https://auth.10jqka.com.cn"
 UPASS_BASE = "https://upass.10jqka.com.cn"
 DOC_COOKIE_PATH = "/docookie2.php"
@@ -96,7 +98,9 @@ class SessionClient:
         item = root.find("item")
         if item is None:
             raise RuntimeError("RSA key fetch failed: <item> node missing")
-        pubkey = item.attrib["pubkey"]
+        pubkey = item.attrib.get("pubkey")
+        if not pubkey:
+            raise RuntimeError("RSA key fetch failed: missing pubkey attribute")
         rsa_version = item.attrib.get("rsa_version", RSA_VERSION_FALLBACK)
         return RsaInfo(pubkey=pubkey, rsa_version=rsa_version)
 
@@ -115,11 +119,16 @@ class SessionClient:
         item = root.find("item")
         if item is None:
             raise RuntimeError("Login response missing <item> node")
+        userid = item.attrib.get("userid")
+        sessionid = item.attrib.get("sessionid")
+        account = item.attrib.get("account")
+        if not all([userid, sessionid, account]):
+            raise RuntimeError("Login response missing required attributes (userid/sessionid/account)")
         rsa_version = item.attrib.get("rsa_version") or rsa_info.rsa_version or RSA_VERSION_FALLBACK
         return LoginBundle(
-            userid=item.attrib["userid"],
-            sessionid=item.attrib["sessionid"],
-            account=item.attrib["account"],
+            userid=userid,
+            sessionid=sessionid,
+            account=account,
             rsa_version=rsa_version,
         )
 
@@ -160,7 +169,7 @@ class SessionClient:
         if not cookies:
             cookie_header = resp.headers.get("Set-Cookie", "")
             if cookie_header:
-                cookies = self._parse_cookie_header(cookie_header)
+                cookies = parse_cookie_header(cookie_header)
         if not cookies:
             raise RuntimeError("docookie2.php returned no cookies")
         return cookies
@@ -196,21 +205,6 @@ class SessionClient:
             key, value = chunk.split('=', 1)
             out[key.strip()] = value.strip()
         return out
-
-    @staticmethod
-    def _parse_cookie_header(header: str) -> Dict[str, str]:
-        cookies: Dict[str, str] = {}
-        for part in header.split(','):
-            segment = part.strip()
-            if not segment:
-                continue
-            pair = segment.split(';', 1)[0]
-            if '=' not in pair:
-                continue
-            name, value = pair.split('=', 1)
-            cookies[name.strip()] = value.strip()
-        return cookies
-
 
 def create_session(username: str, password: str) -> SessionResult:
     """Convenience wrapper that returns ``SessionResult`` for the given credentials."""

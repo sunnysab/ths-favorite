@@ -3,6 +3,9 @@
 
 import argparse
 import sys
+
+from loguru import logger
+
 from favorite import THSUserFavorite
 
 
@@ -114,4 +117,6 @@ def main():
 
 
 if __name__ == "__main__":
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
     main()
