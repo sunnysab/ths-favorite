@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from loguru import logger
 
@@ -128,10 +128,15 @@ class PortfolioManager:
             raise THSAPIError("添加股票", f"未能找到分组 '{group_identifier}'")
 
         item_code, api_item_type = self._parse_symbol(symbol)
-        version = self._ensure_version_available()
-        result = self._api.add_item(target_group_id, item_code, api_item_type, version)
-        self.get_all_groups(use_cache=False)
-        return result
+        market_short = market_abbr(api_item_type)
+
+        def api_call(version: str) -> Dict[str, Any]:
+            return self._api.add_item(target_group_id, item_code, api_item_type, version)
+
+        def update_cache(_: Dict[str, Any]) -> None:
+            self._add_item_to_local_cache(target_group_id, item_code, market_short)
+
+        return self._perform_write_operation("添加股票", api_call, update_cache)
 
     def delete_item_from_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
         logger.info("尝试删除项目 '%s' 从分组 '%s'...", symbol, group_identifier)
@@ -140,27 +145,40 @@ class PortfolioManager:
             raise THSAPIError("删除股票", f"未能找到分组 '{group_identifier}'")
 
         item_code, api_item_type = self._parse_symbol(symbol)
-        version = self._ensure_version_available()
-        result = self._api.delete_item(target_group_id, item_code, api_item_type, version)
-        self.get_all_groups(use_cache=False)
-        return result
+        market_short = market_abbr(api_item_type)
+
+        def api_call(version: str) -> Dict[str, Any]:
+            return self._api.delete_item(target_group_id, item_code, api_item_type, version)
+
+        def update_cache(_: Dict[str, Any]) -> None:
+            self._remove_item_from_local_cache(target_group_id, item_code, market_short)
+
+        return self._perform_write_operation("删除股票", api_call, update_cache)
 
     def add_group(self, group_name: str) -> Dict[str, Any]:
         if not group_name:
             raise THSAPIError("添加分组", "分组名称不能为空")
-        version = self._ensure_version_available()
-        result = self._api.add_group(group_name, version)
-        self.get_all_groups(use_cache=False)
-        return result
+
+        def api_call(version: str) -> Dict[str, Any]:
+            return self._api.add_group(group_name, version)
+
+        def update_cache(response: Dict[str, Any]) -> None:
+            self._add_group_to_local_cache(group_name, response)
+
+        return self._perform_write_operation("添加分组", api_call, update_cache)
 
     def delete_group(self, group_identifier: str) -> Dict[str, Any]:
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("删除分组", f"未能找到 '{group_identifier}'")
-        version = self._ensure_version_available()
-        result = self._api.delete_group(target_group_id, version)
-        self.get_all_groups(use_cache=False)
-        return result
+
+        def api_call(version: str) -> Dict[str, Any]:
+            return self._api.delete_group(target_group_id, version)
+
+        def update_cache(_: Dict[str, Any]) -> None:
+            self._remove_group_from_local_cache(target_group_id)
+
+        return self._perform_write_operation("删除分组", api_call, update_cache)
 
     def share_group(self, group_identifier: str, valid_time: int) -> Dict[str, Any]:
         target_group_id = self._get_group_id_by_identifier(group_identifier)
@@ -179,6 +197,31 @@ class PortfolioManager:
             "url_style": 0,
         }
         return self._api.share_group(payload)
+
+    def _perform_write_operation(
+        self,
+        action_name: str,
+        api_call_factory: Callable[[str], Dict[str, Any]],
+        cache_updater: Callable[[Dict[str, Any]], None],
+    ) -> Dict[str, Any]:
+        for attempt in range(2):
+            version = self._ensure_version_available()
+            try:
+                result = api_call_factory(version)
+            except THSAPIError as exc:
+                if attempt == 0 and self._is_version_conflict_error(exc):
+                    logger.warning("%s 遇到版本冲突，刷新数据后自动重试。", action_name)
+                    self.get_all_groups(use_cache=False)
+                    continue
+                raise
+            self._update_version_from_response_data(result)
+            try:
+                cache_updater(result)
+            except Exception:
+                logger.exception("%s 成功但更新本地缓存失败，改为触发全量刷新。", action_name)
+                self.get_all_groups(use_cache=False)
+            return result
+        raise THSAPIError(action_name, "操作在多次重试后仍失败，请稍后再试。")
 
     def refresh_selfstock_detail(self, force: bool = False) -> Optional[str]:
         if not force and self._selfstock_detail_map:
@@ -267,6 +310,84 @@ class PortfolioManager:
         if group_identifier in self._groups_cache:
             return self._groups_cache[group_identifier].group_id
         return None
+
+    def _get_group_entry_by_id(self, group_id: str) -> Optional[Tuple[str, StockGroup]]:
+        if not group_id:
+            return None
+        if not self._groups_cache:
+            self.get_all_groups(use_cache=False)
+        for name, group_obj in self._groups_cache.items():
+            if group_obj.group_id == group_id:
+                return name, group_obj
+        return None
+
+    def _add_item_to_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
+        entry = self._get_group_entry_by_id(group_id)
+        if not entry:
+            logger.warning("未在本地缓存中找到 group_id=%s，触发全量刷新以保持一致。", group_id)
+            self.get_all_groups(use_cache=False)
+            return
+        _, group = entry
+        new_item = StockItem(code=item_code, market=market_short)
+        if new_item in group.items:
+            return
+        group.items.append(new_item)
+        self._persist_groups_cache()
+
+    def _remove_item_from_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
+        entry = self._get_group_entry_by_id(group_id)
+        if not entry:
+            logger.warning("删除股票成功但 group_id=%s 未在缓存中找到，触发全量刷新。", group_id)
+            self.get_all_groups(use_cache=False)
+            return
+        _, group = entry
+        target = StockItem(code=item_code, market=market_short)
+        original_len = len(group.items)
+        group.items = [item for item in group.items if item != target]
+        if len(group.items) != original_len:
+            self._persist_groups_cache()
+
+    def _add_group_to_local_cache(self, group_name: str, response: Optional[Dict[str, Any]]) -> None:
+        group_id = self._extract_group_id_from_response(response)
+        if not group_id:
+            logger.warning("添加分组成功但未拿到新分组ID，执行全量刷新以同步状态。")
+            self.get_all_groups(use_cache=False)
+            return
+        self._groups_cache[group_name] = StockGroup(name=group_name, group_id=group_id, items=[])
+        self._persist_groups_cache()
+
+    def _remove_group_from_local_cache(self, group_id: str) -> None:
+        entry = self._get_group_entry_by_id(group_id)
+        if not entry:
+            logger.warning("删除分组成功但本地无 group_id=%s，执行全量刷新同步。", group_id)
+            self.get_all_groups(use_cache=False)
+            return
+        name, _ = entry
+        self._groups_cache.pop(name, None)
+        self._persist_groups_cache()
+
+    def _persist_groups_cache(self) -> None:
+        save_groups_cache(self._group_cache_path, self._groups_cache)
+
+    @staticmethod
+    def _extract_group_id_from_response(response: Optional[Dict[str, Any]]) -> Optional[str]:
+        if not isinstance(response, dict):
+            return None
+        for key in ("group_id", "groupid", "id"):
+            value = response.get(key)
+            if value:
+                return str(value)
+        return None
+
+    @staticmethod
+    def _is_version_conflict_error(error: THSAPIError) -> bool:
+        message = str(error)
+        lowered = message.lower()
+        if "version" in lowered and any(token in lowered for token in ("outdated", "mismatch", "refresh", "expired")):
+            return True
+        if "版本" in message and any(token in message for token in ("过期", "失效", "不一致", "不匹配", "刷新")):
+            return True
+        return False
 
     def _parse_symbol(self, symbol: str) -> Tuple[str, str]:
         if "." not in symbol:
