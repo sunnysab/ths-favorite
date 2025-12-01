@@ -21,8 +21,8 @@ import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-AUTH_BASE = "http://auth.10jqka.com.cn"
-UPASS_BASE = "http://upass.10jqka.com.cn"
+AUTH_BASE = "https://auth.10jqka.com.cn"
+UPASS_BASE = "https://upass.10jqka.com.cn"
 DOC_COOKIE_PATH = "/docookie2.php"
 USER_AGENT = "同花顺/7.0.10 CFNetwork/1333.0.4 Darwin/21.5.0"
 IMEI_ENCODED = "ZjI6MDY6NGE6NzI6MjQ6NTA="
