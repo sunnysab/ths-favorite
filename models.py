@@ -10,16 +10,26 @@ from loguru import logger
 class THSFavorite:
     """同花顺自选股的单个项目数据类。"""
 
-    code: str
-    market: Optional[str] = None
+    code: str = field(compare=True)
+    market: Optional[str] = field(default=None, compare=True)
+    price: Optional[float] = field(default=None, compare=False)
+    added_at: Optional[str] = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if self.market:
             object.__setattr__(self, "market", self.market.upper())
 
     def __repr__(self) -> str:
+        extras = []
         if self.market:
-            return f"THSFavorite(code='{self.code}', market='{self.market}')"
+            extras.append(f"market='{self.market}'")
+        if self.price is not None:
+            extras.append(f"price={self.price}")
+        if self.added_at:
+            extras.append(f"added_at='{self.added_at}'")
+        extras_str = ", ".join(extras)
+        if extras_str:
+            return f"THSFavorite(code='{self.code}', {extras_str})"
         return f"THSFavorite(code='{self.code}')"
 
 

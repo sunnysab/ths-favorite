@@ -101,14 +101,20 @@ with THSUserFavorite(
 | `add_group(name)` | 新增分组。 | 同上 |
 | `delete_group(group)` | 删除分组（不可恢复，谨慎操作）。 | 同上 |
 | `share_group(group, valid_time)` | 创建分享链接，`valid_time` 为秒。 | `dict`，通常包含 `share_url` |
+| `refresh_selfstock_detail(force=False)` | 调用 selfstock_detail 接口，刷新加入价格/时间缓存。 | 版本号或 `None` |
+| `get_item_snapshot("600519.SH")` | 读取指定股票的加入价格/时间，必要时自动刷新缓存。 | `dict` 或 `None` |
 | `set_cookies(cookies)` | 直接替换底层客户端 Cookie。 | `None` |
 | `close()` | 手动关闭客户端（`with` 语句会自动调用）。 | `None` |
+
+> `selfstock_detail_version` 属性可查看最近一次下载的 selfstock_detail 版本号；每个 `THSFavorite` 实例也新增了 `price` 与 `added_at` 字段。
 
 ### 2.4 示例：全流程自动化
 ```python
 with THSUserFavorite(auth_method="browser") as ths:
     groups = ths.get_all_groups()
     print(groups["消费"].items[:3])
+    first_item = groups["消费"].items[0]
+    print("加入价格:", first_item.price, "加入时间:", first_item.added_at)
 
     ths.add_item_to_group("消费", "600519.SH")
     ths.delete_item_from_group("消费", "000858.SZ")

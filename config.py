@@ -5,7 +5,7 @@ from typing import Dict
 DEFAULT_HEADERS: Dict[str, str] = {
     "User-Agent": (
         "Hexin_Gphone/11.28.03 (Royal Flush) hxtheme/0 innerversion/G037.09.028.1.32 "
-        "followPhoneSystemTheme/0 userid/500780707 getHXAPPAccessibilityMode/0 "
+        "followPhoneSystemTheme/0 userid/000000000 getHXAPPAccessibilityMode/0 "
         "hxNewFont/1 isVip/0 getHXAPPFontSetting/normal getHXAPPAdaptOldSetting/0 okhttp/3.14.9"
     ),
 }

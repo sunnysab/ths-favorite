@@ -22,6 +22,7 @@ from config import (
 from constant import market_abbr, market_code
 from cookie import load_browser_cookie
 from models import THSFavorite, THSFavoriteGroup
+from selfstock_detail import fetch_selfstock_detail
 from storage import load_groups_cache, read_cached_cookies, save_groups_cache, write_cookie_cache
 
 T_UserFavorite = TypeVar("T_UserFavorite", bound="THSUserFavorite")
@@ -103,6 +104,9 @@ class THSUserFavorite:
 
         self._current_version: Optional[Union[str, int]] = None
         self._groups_cache: Dict[str, THSFavoriteGroup] = load_groups_cache(self._group_cache_path)
+        self._selfstock_detail_version: Optional[str] = None
+        self._selfstock_detail_map: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        self._selfstock_detail_raw: List[Dict[str, Any]] = []
 
     def set_cookies(self, cookies_input: Union[str, Dict[str, str]]) -> None:
         logger.info("通过 THSUserFavorite 设置 API 客户端 cookies...")
@@ -124,6 +128,111 @@ class THSUserFavorite:
                 logger.error("仍未能获取有效的自选列表版本号。")
                 return False
         return True
+
+    @property
+    def selfstock_detail_version(self) -> Optional[str]:
+        """Return the version tag reported by ``selfstock_detail`` API."""
+
+        return self._selfstock_detail_version
+
+    def refresh_selfstock_detail(self, force: bool = False) -> Optional[str]:
+        """Refresh cached selfstock detail metadata.
+
+        Args:
+            force: 若为 True，则无条件刷新；否则在已有缓存时直接返回版本号。
+
+        Returns:
+            str | None: 最新版本号，失败时为 None。
+        """
+
+        if not force and self._selfstock_detail_map:
+            return self._selfstock_detail_version
+        return self._download_selfstock_detail()
+
+    def _download_selfstock_detail(self) -> Optional[str]:
+        cookies = self.api_client.get_cookies()
+        userid = cookies.get("userid")
+        if not userid:
+            logger.warning("无法刷新 selfstock_detail：cookies 中缺少 userid。")
+            return None
+
+        try:
+            version, detail_list = fetch_selfstock_detail(userid, cookies)
+        except Exception:
+            logger.exception("调用 selfstock_detail 接口失败。")
+            return None
+
+        index: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        for entry in detail_list:
+            code = entry.get("C")
+            market_type = entry.get("M")
+            if not code:
+                continue
+            market_short = market_abbr(market_type) if market_type else None
+            key = self._detail_key(code, market_short)
+            price_raw = entry.get("P")
+            price_value: Optional[float] = None
+            if price_raw not in (None, ""):
+                try:
+                    price_value = float(price_raw)
+                except (TypeError, ValueError):
+                    logger.debug("无法解析价格 '%s' (%s)", price_raw, entry)
+            index[key] = {
+                "price": price_value,
+                "timestamp": entry.get("T"),
+            }
+
+        self._selfstock_detail_raw = detail_list
+        self._selfstock_detail_map = index
+        self._selfstock_detail_version = version
+        logger.info(
+            "selfstock_detail 数据刷新成功：版本 %s，记录 %d 条。",
+            version or "未知",
+            len(index),
+        )
+        return version
+
+    @staticmethod
+    def _detail_key(code: str, market_short: Optional[str]) -> Tuple[str, str]:
+        return (code, (market_short or "").upper())
+
+    def _attach_selfstock_metadata(self, favorites: List[THSFavorite]) -> None:
+        if not self._selfstock_detail_map:
+            return
+        for item in favorites:
+            market_key = (item.market or "").upper()
+            meta = self._selfstock_detail_map.get((item.code, market_key))
+            if meta is None:
+                meta = self._selfstock_detail_map.get((item.code, ""))
+            if not meta:
+                continue
+            if meta.get("price") is not None:
+                object.__setattr__(item, "price", meta["price"])
+            if meta.get("timestamp"):
+                object.__setattr__(item, "added_at", meta["timestamp"])
+
+    def get_item_snapshot(self, code_with_market_suffix: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
+        """Return metadata (price/time) for a specific favorite item."""
+
+        if refresh or not self._selfstock_detail_map:
+            self.refresh_selfstock_detail(force=True)
+
+        if "." not in code_with_market_suffix:
+            logger.error("股票代码需包含市场后缀，例如 '600519.SH'")
+            return None
+
+        code_part, market_suffix = code_with_market_suffix.rsplit(".", 1)
+        key = self._detail_key(code_part, market_suffix)
+        meta = self._selfstock_detail_map.get(key) or self._selfstock_detail_map.get((code_part, ""))
+        if not meta:
+            return None
+        return {
+            "code": code_part,
+            "market": market_suffix.upper(),
+            "price": meta.get("price"),
+            "added_at": meta.get("timestamp"),
+            "version": self._selfstock_detail_version,
+        }
 
     def get_raw_group_data(self) -> Optional[Dict[str, Any]]:
         """Fetch raw group payload from the THS open API.
@@ -261,6 +370,7 @@ class THSUserFavorite:
         if raw_data_from_api:
             logger.info("成功从API获取原始数据，开始转换为 THSFavoriteGroup 对象...")
             parsed_group_list_raw_info = self.parse_group_list(raw_data_from_api)
+            self.refresh_selfstock_detail(force=True)
 
             for group_raw_info in parsed_group_list_raw_info:
                 group_name: Optional[str] = group_raw_info.get("name")
@@ -279,6 +389,8 @@ class THSUserFavorite:
                             favorite_items_list.append(THSFavorite(code=item_code_str, market=market_short_name))
                         else:
                             logger.warning("在分组 '%s' 中发现无代码的项目详情: %s", group_name, detail)
+
+                    self._attach_selfstock_metadata(favorite_items_list)
 
                     ths_favorite_group = THSFavoriteGroup(name=group_name, group_id=group_id, items=favorite_items_list)
                     formatted_groups[group_name] = ths_favorite_group

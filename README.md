@@ -8,7 +8,7 @@
 ## 项目功能
 
 - 通过同花顺密码或浏览器Cookie登录
-- 获取所有自选股分组数据
+- 获取所有自选股分组数据，并自动附带 selfstock_detail 接口提供的加入价格/时间
 - 添加股票到指定自选股分组
 - 从指定自选股分组删除股票
 - 新增或删除自选分组 （by @Kerwin1202）
@@ -69,10 +69,17 @@ with THSUserFavorite() as ths:
     # 获取所有分组
     groups = ths.get_all_groups()
     
-    # 查看分组内容
+    # 查看分组内容并打印加入价/时间（来自 selfstock_detail）
     for name, group in groups.items():
         print(f"分组: {name}, ID: {group.group_id}")
         print(f"包含 {len(group.items)} 个股票")
+        for item in group.items:
+            line = f"- {item.code}.{item.market or ''}"
+            if item.price is not None:
+                line += f" @ {item.price}"
+            if item.added_at:
+                line += f" (added {item.added_at})"
+            print(line)
     
     # 添加股票到分组中 (使用分组名称)
     ths.add_item_to_group("消费", "600519.SH")  # 添加贵州茅台
@@ -146,6 +153,21 @@ python main.py group-add "新分组"
 python main.py group-delete 消费
 python main.py group-share 消费 604800   # 有效期 7 天
 ```
+
+### 自选股价格/时间元数据
+
+`THSUserFavorite` 会在每次成功刷新分组数据后调用 `selfstock_detail` 接口，将每个自选股的加入价格 (`THSFavorite.price`) 与时间 (`THSFavorite.added_at`) 注入结果。你也可以手动刷新或查看这些信息：
+
+```python
+with THSUserFavorite() as ths:
+    ths.refresh_selfstock_detail(force=True)
+    snapshot = ths.get_item_snapshot("600519.SH")
+    print(snapshot)  # {'code': '600519', 'market': 'SH', 'price': 123.45, 'added_at': '20231101', 'version': '105'}
+```
+
+- `refresh_selfstock_detail(force=True)` 会立即重新下载最新的价格/时间快照。
+- `selfstock_detail_version` 属性提供最近一次下载的版本号，便于与同花顺客户端保持一致。
+- `get_item_snapshot` 可单独查询任意股票的加入信息（自动复用/刷新缓存）。
 
 ### 股票代码格式
 
