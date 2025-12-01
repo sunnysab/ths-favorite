@@ -9,11 +9,12 @@ from requests.exceptions import HTTPError, RequestException
 
 from config import DEFAULT_HEADERS, DEFAULT_HTTP_TIMEOUT
 from cookie import parse_cookie_string
+from exceptions import THSNetworkError
 
-T_HttpApiClient = TypeVar("T_HttpApiClient", bound="THSHttpApiClient")
+TApiClient = TypeVar("TApiClient", bound="ApiClient")
 
 
-class THSHttpApiClient:
+class ApiClient:
     """负责底层 HTTP 请求、Cookie 管理与通用错误处理的客户端。"""
 
     def __init__(
@@ -25,7 +26,7 @@ class THSHttpApiClient:
         timeout: float = DEFAULT_HTTP_TIMEOUT,
     ) -> None:
         self.base_url: str = base_url.rstrip("/")
-        logger.debug("THSHttpApiClient 初始化: base_url='%s', timeout=%ss", self.base_url, timeout)
+        logger.debug("ApiClient 初始化: base_url='%s', timeout=%ss", self.base_url, timeout)
 
         self._timeout: float = timeout
 
@@ -88,6 +89,7 @@ class THSHttpApiClient:
         logger.debug("请求参数: %s, 表单数据: %s, JSON载荷: %s", params, data, json_payload is not None)
 
         response: Optional[Response] = None
+        action = f"{method.upper()} {full_url}"
         try:
             response = self._client.request(
                 method=method,
@@ -112,16 +114,16 @@ class THSHttpApiClient:
             status_code = exc.response.status_code if exc.response else "未知"
             resp_preview = exc.response.text[:200] if exc.response and exc.response.text else ""
             logger.error("HTTP错误 (%s %s): 状态码 %s, 响应: %s...", method, full_url, status_code, resp_preview)
-            raise
+            raise THSNetworkError(action, f"HTTP {status_code}: {resp_preview}") from exc
         except RequestException as exc:
             logger.error("请求错误 (%s %s): %s", method, full_url, exc)
-            raise
+            raise THSNetworkError(action, str(exc)) from exc
         except (json.JSONDecodeError, ValueError) as exc:
             resp_text_preview = ""
             if response is not None and response.text:
                 resp_text_preview = response.text[:200]
             logger.error("JSON解码错误 (%s %s): %s. 响应文本: %s...", method, full_url, exc, resp_text_preview)
-            raise
+            raise THSNetworkError(action, f"响应非 JSON: {exc}") from exc
 
     def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
         return self.request("GET", endpoint, params=params, **kwargs)
@@ -144,11 +146,11 @@ class THSHttpApiClient:
     def close(self) -> None:
         if not self._is_external_client:
             self._client.close()
-            logger.info("内部 THSHttpApiClient 的 requests.Session 已关闭。")
+            logger.info("内部 ApiClient 的 requests.Session 已关闭。")
         else:
-            logger.debug("THSHttpApiClient 使用的是外部 Session，不在此处关闭。")
+            logger.debug("ApiClient 使用的是外部 Session，不在此处关闭。")
 
-    def __enter__(self: T_HttpApiClient) -> T_HttpApiClient:
+    def __enter__(self: TApiClient) -> TApiClient:
         return self
 
     def __exit__(

@@ -9,19 +9,28 @@ Steps implemented here:
 Dependencies: ``requests`` and ``cryptography``. Install with
 ``pip install requests cryptography`` if they are not already available.
 """
-from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Union
 
 import requests
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-from cookie import parse_cookie_header
+from config import COOKIE_CACHE_FILE, COOKIE_CACHE_TTL_SECONDS
+from cookie import load_browser_cookie, parse_cookie_header, parse_cookie_string
+from exceptions import THSAPIError, THSNetworkError
+from storage import (
+    load_cookie_cache_data,
+    read_cached_cookies,
+    write_cookie_cache,
+)
+from utils import parse_ths_xml_response
 
 AUTH_BASE = "https://auth.10jqka.com.cn"
 UPASS_BASE = "https://upass.10jqka.com.cn"
@@ -175,20 +184,12 @@ class SessionClient:
         return cookies
 
     def _call_xml(self, url: str, params: Dict[str, str], action: str) -> ET.Element:
-        resp = self._http.get(url, params=params, timeout=self._timeout)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-        self._ensure_success(root, action)
-        return root
-
-    @staticmethod
-    def _ensure_success(root: ET.Element, action: str) -> None:
-        ret_node = root.find("ret")
-        if ret_node is None:
-            raise RuntimeError(f"{action} failed: <ret> node missing")
-        code = int(ret_node.attrib.get("code", "-1"))
-        if code != 0:
-            raise RuntimeError(f"{action} failed: {ret_node.attrib.get('msg', 'unknown error')}")
+        try:
+            resp = self._http.get(url, params=params, timeout=self._timeout)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            raise THSNetworkError(action, str(exc)) from exc
+        return parse_ths_xml_response(resp.text, action)
 
     @staticmethod
     def _encrypt_with_rsa(pubkey_pem: str, value: str) -> str:
@@ -205,6 +206,150 @@ class SessionClient:
             key, value = chunk.split('=', 1)
             out[key.strip()] = value.strip()
         return out
+
+
+class SessionManager:
+    """Provide unified cookie resolution across login strategies."""
+
+    def __init__(
+        self,
+        *,
+        cookies: Optional[Union[Dict[str, str], str]] = None,
+        auth_method: str = "browser",
+        browser_name: str = "firefox",
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        cookie_cache_path: Optional[str] = None,
+        cookie_cache_ttl_seconds: int = COOKIE_CACHE_TTL_SECONDS,
+        login_factory: Optional[Callable[[str, str], SessionResult]] = None,
+    ) -> None:
+        self._explicit_cookies = self._normalize_cookies(cookies)
+        self._auth_method = (auth_method or "browser").lower()
+        self._browser_name = browser_name
+        self._username = username
+        self._password = password
+        self._cookie_cache_path = cookie_cache_path or COOKIE_CACHE_FILE
+        self._cookie_cache_ttl = cookie_cache_ttl_seconds
+        self._login_factory = login_factory or create_session
+        self._resolved_cache: Optional[Dict[str, str]] = None
+
+    def resolve(self) -> Optional[Dict[str, str]]:
+        if self._explicit_cookies is not None:
+            return self._explicit_cookies.copy()
+        if self._resolved_cache is None:
+            self._resolved_cache = self._resolve_from_strategy()
+        return self._resolved_cache.copy() if self._resolved_cache else None
+
+    def _resolve_from_strategy(self) -> Optional[Dict[str, str]]:
+        if self._auth_method in {"none", "skip"}:
+            return None
+        if self._auth_method == "browser":
+            cache_key = self._browser_cache_key(self._browser_name)
+            return self._fetch_with_cache(cache_key, lambda: self._load_from_browser(self._browser_name))
+        if self._auth_method in {"credentials", "login"}:
+            return self._resolve_credentials_flow()
+        raise ValueError(f"未知的 auth_method: {self._auth_method}")
+
+    def _resolve_credentials_flow(self) -> Optional[Dict[str, str]]:
+        if self._username and self._password:
+            cache_key = self._credentials_cache_key(self._username)
+            return self._fetch_with_cache(
+                cache_key,
+                lambda: self._load_from_credentials(self._username, self._password),
+            )
+
+        cached_by_user: Optional[Dict[str, str]] = None
+        if self._username:
+            cache_key = self._credentials_cache_key(self._username)
+            cached_by_user = read_cached_cookies(
+                self._cookie_cache_path,
+                cache_key,
+                self._cookie_cache_ttl,
+            )
+            if cached_by_user:
+                return cached_by_user
+
+        latest = self._load_latest_credentials_cache()
+        if latest:
+            return latest
+
+        raise THSAPIError(
+            "认证",
+            "auth_method=credentials 需要提供 username/password，或预先缓存的凭据。",
+        )
+
+    def _fetch_with_cache(
+        self,
+        cache_key: str,
+        loader: Callable[[], Optional[Dict[str, str]]],
+    ) -> Optional[Dict[str, str]]:
+        cached = read_cached_cookies(self._cookie_cache_path, cache_key, self._cookie_cache_ttl)
+        if cached:
+            return cached
+        fresh = loader()
+        if fresh:
+            write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
+        return fresh
+
+    def _load_from_browser(self, browser_name: str) -> Optional[Dict[str, str]]:
+        cookies_raw = load_browser_cookie(browser_name)
+        cookie_dict: Dict[str, str] = {}
+        for cookie in cookies_raw:
+            name = getattr(cookie, "name", None)
+            value = getattr(cookie, "value", None)
+            if name and value is not None:
+                cookie_dict[str(name)] = str(value)
+        return cookie_dict or None
+
+    def _load_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
+        session = self._login_factory(username, password)
+        return session.cookies
+
+    def _load_latest_credentials_cache(self) -> Optional[Dict[str, str]]:
+        cache_data = load_cookie_cache_data(self._cookie_cache_path)
+        if not cache_data:
+            return None
+        latest_payload: Optional[Dict[str, str]] = None
+        latest_ts = float("-inf")
+        now = time.time()
+        for key, entry in cache_data.items():
+            if not isinstance(key, str) or not key.startswith("credentials::"):
+                continue
+            timestamp = entry.get("timestamp")
+            try:
+                timestamp_value = float(timestamp)
+            except (TypeError, ValueError):
+                continue
+            if now - timestamp_value > self._cookie_cache_ttl:
+                continue
+            if timestamp_value <= latest_ts:
+                continue
+            cookies_payload = entry.get("cookies")
+            if isinstance(cookies_payload, dict) and cookies_payload:
+                latest_payload = {str(k): str(v) for k, v in cookies_payload.items()}
+                latest_ts = timestamp_value
+        return latest_payload
+
+    @staticmethod
+    def _browser_cache_key(browser_name: str) -> str:
+        normalized = (browser_name or "default").lower()
+        return f"browser::{normalized}"
+
+    @staticmethod
+    def _credentials_cache_key(username: str) -> str:
+        digest = hashlib.sha256(username.encode("utf-8")).hexdigest()
+        return f"credentials::{digest}"
+
+    @staticmethod
+    def _normalize_cookies(cookies_input: Optional[Union[Dict[str, str], str]]) -> Optional[Dict[str, str]]:
+        if cookies_input is None:
+            return None
+        if isinstance(cookies_input, dict):
+            return {str(k): str(v) for k, v in cookies_input.items()}
+        if isinstance(cookies_input, str):
+            return parse_cookie_string(cookies_input)
+        raise TypeError("cookies 必须是字典或字符串")
+
 
 def create_session(username: str, password: str) -> SessionResult:
     """Convenience wrapper that returns ``SessionResult`` for the given credentials."""

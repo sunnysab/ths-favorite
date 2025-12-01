@@ -27,8 +27,8 @@ def load_browser_cookie(browser: str) -> List[Cookie]:
 
     if cookie_jar is None:
         raise RuntimeError(
-            "检测到未安装 browser-cookie3，浏览器自动登录功能不可用。"
-            "请运行 'pip install browser-cookie3' 或在 THSUserFavorite 中手动提供 cookies。"
+            "检测到未安装 browser-cookie3，浏览器自动登录功能不可用（仅在 auth_method=browser 时需要）。"
+            "请运行 'pip install browser-cookie3'，或改用账号密码/自定义 cookies。"
         )
 
     load = None

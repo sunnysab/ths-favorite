@@ -30,4 +30,17 @@ Homepage = "https://github.com/sunnysab/ths-favorite"
 Repository = "https://github.com/sunnysab/ths-favorite"
 
 [tool.setuptools]
-py-modules = ["auth", "constant", "cookie", "favorite", "main"]
+py-modules = [
+    "api",
+    "auth",
+    "client",
+    "config",
+    "constant",
+    "cookie",
+    "exceptions",
+    "main",
+    "models",
+    "service",
+    "storage",
+    "utils",
+]

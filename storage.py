@@ -7,18 +7,11 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from models import THSFavorite, THSFavoriteGroup
+from models import StockGroup, StockItem
 
 
-def load_groups_cache(cache_file: str) -> Dict[str, THSFavoriteGroup]:
-    """Load cached groups from disk into THSFavoriteGroup instances.
-
-    Args:
-        cache_file: JSON 文件路径。
-
-    Returns:
-        dict[str, THSFavoriteGroup]: 以分组名称为键的缓存字典。
-    """
+def load_groups_cache(cache_file: str) -> Dict[str, StockGroup]:
+    """Load cached groups from disk into StockGroup instances."""
 
     logger.info(f"尝试从文件 '{cache_file}' 加载分组缓存...")
     if not os.path.exists(cache_file):
@@ -35,10 +28,10 @@ def load_groups_cache(cache_file: str) -> Dict[str, THSFavoriteGroup]:
         logger.exception("从文件加载缓存时发生未知错误。")
         return {}
 
-    groups: Dict[str, THSFavoriteGroup] = {}
+    groups: Dict[str, StockGroup] = {}
     for group_data in cached_groups_data:
-        items: List[THSFavorite] = [
-            THSFavorite(code=item_dict["code"], market=item_dict.get("market"))
+        items: List[StockItem] = [
+            StockItem(code=item_dict["code"], market=item_dict.get("market"))
             for item_dict in group_data.get("items", [])
             if item_dict.get("code")
         ]
@@ -47,13 +40,13 @@ def load_groups_cache(cache_file: str) -> Dict[str, THSFavoriteGroup]:
         if not group_name or not group_id:
             logger.warning(f"缓存中发现不完整的分组数据，已跳过: {group_data}")
             continue
-        groups[group_name] = THSFavoriteGroup(name=group_name, group_id=group_id, items=items)
+        groups[group_name] = StockGroup(name=group_name, group_id=group_id, items=items)
 
     logger.info(f"已从 '{cache_file}' 加载 {len(groups)} 个分组到缓存。")
     return groups
 
 
-def save_groups_cache(cache_file: str, groups: Dict[str, THSFavoriteGroup]) -> None:
+def save_groups_cache(cache_file: str, groups: Dict[str, StockGroup]) -> None:
     """Persist in-memory groups onto disk for faster warm start."""
 
     logger.info(f"尝试将 {len(groups)} 个分组保存到缓存文件 '{cache_file}'...")

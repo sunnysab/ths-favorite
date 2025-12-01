@@ -7,7 +7,7 @@ from loguru import logger
 
 
 @dataclass(frozen=True)
-class THSFavorite:
+class StockItem:
     """同花顺自选股的单个项目数据类。"""
 
     code: str = field(compare=True)
@@ -29,37 +29,37 @@ class THSFavorite:
             extras.append(f"added_at='{self.added_at}'")
         extras_str = ", ".join(extras)
         if extras_str:
-            return f"THSFavorite(code='{self.code}', {extras_str})"
-        return f"THSFavorite(code='{self.code}')"
+            return f"StockItem(code='{self.code}', {extras_str})"
+        return f"StockItem(code='{self.code}')"
 
 
 @dataclass
-class THSFavoriteGroup:
+class StockGroup:
     """同花顺自选股的分组数据类。"""
 
     name: str
     group_id: str
-    items: List[THSFavorite] = field(default_factory=list)
+    items: List[StockItem] = field(default_factory=list)
 
     def __repr__(self) -> str:
         return (
-            f"THSFavoriteGroup(name='{self.name}', "
+            f"StockGroup(name='{self.name}', "
             f"group_id='{self.group_id}', items_count={len(self.items)})"
         )
 
-    def diff(self, other: "THSFavoriteGroup") -> Tuple[List[THSFavorite], List[THSFavorite]]:
-        if not isinstance(other, THSFavoriteGroup):
+    def diff(self, other: "StockGroup") -> Tuple[List[StockItem], List[StockItem]]:
+        if not isinstance(other, StockGroup):
             logger.error(
-                "类型错误: 比较对象 'other' 必须是 THSFavoriteGroup 类型，而非 %s。",
+                "类型错误: 比较对象 'other' 必须是 StockGroup 类型，而非 %s。",
                 type(other),
             )
-            raise TypeError("比较对象 'other' 必须是 THSFavoriteGroup 类型。")
+            raise TypeError("比较对象 'other' 必须是 StockGroup 类型。")
 
-        self_items_set: Set[THSFavorite] = set(self.items)
-        other_items_set: Set[THSFavorite] = set(other.items)
+        self_items_set: Set[StockItem] = set(self.items)
+        other_items_set: Set[StockItem] = set(other.items)
 
-        added_items: List[THSFavorite] = list(other_items_set - self_items_set)
-        removed_items: List[THSFavorite] = list(self_items_set - other_items_set)
+        added_items: List[StockItem] = list(other_items_set - self_items_set)
+        removed_items: List[StockItem] = list(self_items_set - other_items_set)
 
         logger.debug(
             "分组 '%s' 与 '%s' 比较: 新增 %d 项, 删除 %d 项。",

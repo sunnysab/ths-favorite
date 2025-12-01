@@ -62,12 +62,12 @@ config.COOKIE_CACHE_FILE = "/tmp/ths_cookies.json"
 ### 基本用法
 
 ```python
-from favorite import THSUserFavorite
+from service import PortfolioManager
 
 # 创建实例，自动从浏览器获取 Cookie
-with THSUserFavorite() as ths:
+with PortfolioManager() as portfolio:
     # 获取所有分组
-    groups = ths.get_all_groups()
+    groups = portfolio.get_all_groups()
     
     # 查看分组内容并打印加入价/时间（来自 selfstock_detail）
     for name, group in groups.items():
@@ -82,13 +82,13 @@ with THSUserFavorite() as ths:
             print(line)
     
     # 添加股票到分组中 (使用分组名称)
-    ths.add_item_to_group("消费", "600519.SH")  # 添加贵州茅台
+    portfolio.add_item_to_group("消费", "600519.SH")  # 添加贵州茅台
     
     # 也可以使用分组ID添加
-    ths.add_item_to_group("0_35", "000858.SZ")  # 添加五粮液到消费分组
+    portfolio.add_item_to_group("0_35", "000858.SZ")  # 添加五粮液到消费分组
     
     # 从分组删除股票
-    ths.delete_item_from_group("消费", "600519.SH")
+    portfolio.delete_item_from_group("消费", "600519.SH")
 ```
 
 #### 命令行基本用法
@@ -98,16 +98,17 @@ with THSUserFavorite() as ths:
 ```bash
 # 列出全部分组或查看单个分组
 python main.py list
-python main.py list -g 消费
+python main.py list -g 消费          # 与 group list -g 相同
+python main.py group list -g 消费    # 层级命令写法
 
 # 添加 / 删除股票（代码格式为 CODE.MARKET）
-python main.py add 消费 600519.SH
-python main.py delete 消费 600519.SH
+python main.py stock add 消费 600519.SH
+python main.py stock del 消费 600519.SH
 
 # 管理和分享分组
-python main.py group-add "长线跟踪"
-python main.py group-delete 消费
-python main.py group-share 消费 604800
+python main.py group add "长线跟踪"
+python main.py group del 消费
+python main.py group share 消费 604800
 
 # 使用账号密码登录再执行命令
 python main.py --auth-method credentials --username 13300000000 --password yourpass list
@@ -117,7 +118,7 @@ python main.py --auth-method credentials --username 13300000000 --password yourp
 
 ## Cookie 获取与缓存
 
-`THSUserFavorite` 提供三种方式来初始化会话：
+`PortfolioManager` 提供三种方式来初始化会话：
 
 - `auth_method="browser"`（默认）：通过 `browser_cookie3` 读取指定浏览器（默认 Firefox）中在 `*.10jqka.com.cn` 下的 Cookie。
 - `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`。
@@ -127,10 +128,10 @@ python main.py --auth-method credentials --username 13300000000 --password yourp
 
 ```python
 # 使用 Chrome 浏览器提取 Cookie，并使用默认的一天有效期缓存
-ths = THSUserFavorite(auth_method="browser", browser_name="chrome")
+portfolio = PortfolioManager(auth_method="browser", browser_name="chrome")
 
 # 使用账号密码登录，并自定义缓存文件位置
-ths = THSUserFavorite(
+portfolio = PortfolioManager(
     auth_method="credentials",
     username="your_account",
     password="your_password",
@@ -149,19 +150,19 @@ python main.py --auth-method credentials --username <13300000000> --password <yo
 常用分组管理命令：
 
 ```bash
-python main.py group-add "新分组"
-python main.py group-delete 消费
-python main.py group-share 消费 604800   # 有效期 7 天
+python main.py group add "新分组"
+python main.py group del 消费
+python main.py group share 消费 604800   # 有效期 7 天
 ```
 
 ### 自选股价格/时间元数据
 
-`THSUserFavorite` 会在每次成功刷新分组数据后调用 `selfstock_detail` 接口，将每个自选股的加入价格 (`THSFavorite.price`) 与时间 (`THSFavorite.added_at`) 注入结果。你也可以手动刷新或查看这些信息：
+`PortfolioManager` 会在每次成功刷新分组数据后调用 `selfstock_detail` 接口，将每个自选股的加入价格 (`StockItem.price`) 与时间 (`StockItem.added_at`) 注入结果。你也可以手动刷新或查看这些信息：
 
 ```python
-with THSUserFavorite() as ths:
-    ths.refresh_selfstock_detail(force=True)
-    snapshot = ths.get_item_snapshot("600519.SH")
+with PortfolioManager() as portfolio:
+    portfolio.refresh_selfstock_detail(force=True)
+    snapshot = portfolio.get_item_snapshot("600519.SH")
     print(snapshot)  # {'code': '600519', 'market': 'SH', 'price': 123.45, 'added_at': '20231101', 'version': '105'}
 ```
 
@@ -186,7 +187,7 @@ with THSUserFavorite() as ths:
 
 ## 数据缓存
 
-工具会自动将分组数据缓存到 `favorite.json` 文件中，减少网络请求次数，提高运行效率。
+工具会自动将分组数据缓存到 `ths_favorite_cache.json` 文件中，减少网络请求次数，提高运行效率。
 
 ## 注意事项
 
