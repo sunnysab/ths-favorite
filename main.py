@@ -3,34 +3,116 @@
 
 import argparse
 import sys
+from datetime import datetime
+from typing import Any, Optional
 
 from loguru import logger
+from tabulate import tabulate
 
 from favorite import THSUserFavorite
+
+
+def _format_price(value: Optional[Any]) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _format_epoch_timestamp(value: float) -> str:
+    timestamp = value
+    if timestamp > 1_000_000_000_000:  # milliseconds
+        timestamp /= 1000.0
+    try:
+        dt_obj = datetime.fromtimestamp(timestamp)
+    except (OSError, ValueError):
+        return "-"
+    return dt_obj.strftime("%Y-%m-%d %H:%M")
+
+
+def _format_added_at(raw: Any) -> str:
+    if raw in (None, ""):
+        return "-"
+
+    if isinstance(raw, float):
+        if not raw.is_integer():
+            return _format_epoch_timestamp(float(raw))
+        raw = int(raw)
+
+    if isinstance(raw, int):
+        text = str(raw)
+    else:
+        text = str(raw).strip()
+
+    if not text:
+        return "-"
+
+    if text.isdigit():
+        if len(text) == 8:
+            try:
+                dt_obj = datetime.strptime(text, "%Y%m%d")
+                return dt_obj.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        elif len(text) == 14:
+            try:
+                dt_obj = datetime.strptime(text, "%Y%m%d%H%M%S")
+                return dt_obj.strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
+        elif len(text) in (10, 13):
+            try:
+                epoch_value = float(text)
+            except ValueError:
+                epoch_value = None
+            if epoch_value is not None:
+                return _format_epoch_timestamp(epoch_value)
+
+    return text
 
 
 def list_groups(ths: THSUserFavorite):
     """列出所有分组及其股票数量"""
     groups = ths.get_all_groups()
-    print(f"共有 {len(groups)} 个分组:")
-    
-    for name, group in groups.items():
-        print(f"- {name} (ID: {group.group_id}, 股票数量: {len(group.items)})")
+    if not groups:
+        print("未找到任何分组。")
+        return
+
+    rows = []
+    for name, group in sorted(groups.items()):
+        rows.append([name, group.group_id, len(group.items)])
+
+    print(f"共有 {len(rows)} 个分组:")
+    print(tabulate(rows, headers=["分组名称", "分组ID", "股票数量"], tablefmt="github"))
 
 
 def list_stocks(ths: THSUserFavorite, group_name: str):
     """列出指定分组中的所有股票"""
     groups = ths.get_all_groups()
-    
+
     if group_name not in groups:
         print(f"未找到名为 '{group_name}' 的分组")
         return
-    
+
     group = groups[group_name]
+    if not group.items:
+        print(f"分组 '{group_name}' (ID: {group.group_id}) 暂无股票。")
+        return
+
+    rows = []
+    for item in sorted(group.items, key=lambda entry: (entry.code, entry.market or "")):
+        code_with_market = f"{item.code}.{item.market}" if item.market else item.code
+        rows.append([
+            code_with_market,
+            item.market or "-",
+            _format_price(item.price),
+            _format_added_at(item.added_at),
+        ])
+
     print(f"分组 '{group_name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
-    
-    for item in group.items:
-        print(f"- {item.code}.{item.market}")
+    print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
 
 
 def main():

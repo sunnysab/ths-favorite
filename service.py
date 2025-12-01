@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
+import time
+import xml.etree.ElementTree as ET
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
+import requests
 from loguru import logger
 from requests.exceptions import HTTPError, RequestException
 
@@ -22,8 +26,13 @@ from config import (
 from constant import market_abbr, market_code
 from cookie import load_browser_cookie
 from models import THSFavorite, THSFavoriteGroup
-from selfstock_detail import fetch_selfstock_detail
-from storage import load_groups_cache, read_cached_cookies, save_groups_cache, write_cookie_cache
+from storage import (
+    load_cookie_cache_data,
+    load_groups_cache,
+    read_cached_cookies,
+    save_groups_cache,
+    write_cookie_cache,
+)
 
 T_UserFavorite = TypeVar("T_UserFavorite", bound="THSUserFavorite")
 
@@ -33,6 +42,53 @@ DELETE_ITEM_ENDPOINT = ENDPOINTS["delete_item"]
 ADD_GROUP_ENDPOINT = ENDPOINTS["add_group"]
 DELETE_GROUP_ENDPOINT = ENDPOINTS["delete_group"]
 SHARE_GROUP_ENDPOINT = ENDPOINTS["share_group"]
+SELFSTOCK_DETAIL_API_URL = "https://ugc.10jqka.com.cn/selfstock_detail"
+SELFSTOCK_DETAIL_TIMEOUT = 10.0
+
+
+def _decode_selfstock_detail(detail_blob: str) -> List[Dict[str, Any]]:
+    if not detail_blob:
+        return []
+    decoded_bytes = base64.b64decode(detail_blob)
+    decoded_str = decoded_bytes.decode("utf-8")
+    if not decoded_str.strip():
+        return []
+    return json.loads(decoded_str)
+
+
+def fetch_selfstock_detail(
+    userid: str,
+    cookies: Dict[str, str],
+    *,
+    timeout: float = SELFSTOCK_DETAIL_TIMEOUT,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    params = {
+        "reqtype": "download",
+        "app_flag": "0E",
+        "userid": userid,
+    }
+    headers = {
+        "userid": userid,
+        "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
+    }
+
+    session = requests.Session()
+    response = session.get(SELFSTOCK_DETAIL_API_URL, params=params, headers=headers, cookies=cookies, timeout=timeout)
+    response.raise_for_status()
+
+    root = ET.fromstring(response.text)
+    ret_node = root.find("ret")
+    if ret_node is None or ret_node.attrib.get("code") != "0":
+        raise RuntimeError(f"API 调用失败: {ET.tostring(root, encoding='unicode')}")
+
+    item = root.find("item")
+    if item is None:
+        raise RuntimeError("响应缺少 <item> 节点")
+
+    version = item.attrib.get("version") or ""
+    detail_blob = item.attrib.get("selfstock_detail", "")
+    detail_data = _decode_selfstock_detail(detail_blob)
+    return version, detail_data
 
 
 class THSUserFavorite:
@@ -770,13 +826,35 @@ class THSUserFavorite:
             cache_key = self._browser_cache_key(browser_name)
             return self._fetch_cookies_with_cache(cache_key, lambda: self._load_cookies_from_browser(browser_name))
         if method in {"credentials", "login"}:
-            if not username or not password:
-                logger.error("auth_method=credentials 需要提供 username 与 password。")
-                return None
-            cache_key = self._credentials_cache_key(username)
+            if username and password:
+                cache_key = self._credentials_cache_key(username)
+                return self._fetch_cookies_with_cache(
+                    cache_key,
+                    lambda: self._load_cookies_from_credentials(username, password),
+                )
+
+            logger.warning("auth_method=credentials 但未提供完整凭据，将尝试使用缓存。")
+            cached_candidate: Optional[Dict[str, str]] = None
+            if username:
+                cache_key = self._credentials_cache_key(username)
+                cached_candidate = read_cached_cookies(
+                    self._cookie_cache_path,
+                    cache_key,
+                    self._cookie_cache_ttl_seconds,
+                )
+                if cached_candidate:
+                    logger.info("使用账号 '%s' 的缓存 cookies。", username)
+                    return cached_candidate
+
+            cached_candidate = self._load_latest_credentials_cache()
+            if cached_candidate:
+                return cached_candidate
+
+            logger.warning("未提供有效凭据且未命中缓存，改用浏览器 cookies。")
+            browser_cache_key = self._browser_cache_key(browser_name)
             return self._fetch_cookies_with_cache(
-                cache_key,
-                lambda: self._load_cookies_from_credentials(username, password),
+                browser_cache_key,
+                lambda: self._load_cookies_from_browser(browser_name),
             )
         if method in {"none", "skip"}:
             logger.info("auth_method 设为 %s，跳过自动加载 cookies。", auth_method)
@@ -800,6 +878,39 @@ class THSUserFavorite:
         if fresh:
             write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
         return fresh
+
+    def _load_latest_credentials_cache(self) -> Optional[Dict[str, str]]:
+        cache_data = load_cookie_cache_data(self._cookie_cache_path)
+        if not cache_data:
+            return None
+
+        latest_payload: Optional[Dict[str, str]] = None
+        latest_timestamp = float("-inf")
+        now = time.time()
+
+        for key, entry in cache_data.items():
+            if not isinstance(key, str) or not key.startswith("credentials::"):
+                continue
+
+            timestamp = entry.get("timestamp")
+            try:
+                timestamp_value = float(timestamp)
+            except (TypeError, ValueError):
+                continue
+
+            if now - timestamp_value > self._cookie_cache_ttl_seconds:
+                continue
+
+            cookies_payload = entry.get("cookies")
+            if isinstance(cookies_payload, dict) and cookies_payload:
+                normalized = {str(k): str(v) for k, v in cookies_payload.items()}
+                if timestamp_value > latest_timestamp:
+                    latest_timestamp = timestamp_value
+                    latest_payload = normalized
+
+        if latest_payload:
+            logger.info("已复用最近一次 credentials cookies 缓存。")
+        return latest_payload
 
     def _load_cookies_from_browser(self, browser_name: str) -> Optional[Dict[str, str]]:
         logger.info("尝试从浏览器 '%s' 读取 cookies…", browser_name)

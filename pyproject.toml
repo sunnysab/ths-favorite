@@ -16,7 +16,8 @@ requires-python = ">=3.7"
 dependencies = [
     "loguru",
     "cryptography",
-    "requests"
+    "requests",
+    "tabulate"
 ]
 
 [project.optional-dependencies]
