@@ -54,6 +54,19 @@ def main():
     del_parser = subparsers.add_parser("delete", help="从分组删除股票")
     del_parser.add_argument("group", help="分组名称或ID")
     del_parser.add_argument("stock", help="股票代码，格式: code.market (如: 600519.SH)")
+
+    # group add
+    group_add_parser = subparsers.add_parser("group-add", help="创建新的分组")
+    group_add_parser.add_argument("name", help="要创建的分组名称")
+
+    # group delete
+    group_delete_parser = subparsers.add_parser("group-delete", help="删除现有分组")
+    group_delete_parser.add_argument("group", help="分组名称或ID")
+
+    # group share
+    group_share_parser = subparsers.add_parser("group-share", help="分享分组获取链接")
+    group_share_parser.add_argument("group", help="分组名称或ID")
+    group_share_parser.add_argument("valid_time", type=int, help="分享链接有效期（秒）")
     
     args = parser.parse_args()
     
@@ -79,6 +92,22 @@ def main():
             result = ths.delete_item_from_group(args.group, args.stock)
             if result:
                 print(f"已成功从分组 '{args.group}' 删除 {args.stock}")
+        elif args.command == "group-add":
+            result = ths.add_group(args.name)
+            if result:
+                print(f"已成功创建分组 '{args.name}'")
+        elif args.command == "group-delete":
+            result = ths.delete_group(args.group)
+            if result:
+                print(f"已成功删除分组 '{args.group}'")
+        elif args.command == "group-share":
+            result = ths.share_group(args.group, args.valid_time)
+            if result:
+                share_url = result.get("share_url") if isinstance(result, dict) else None
+                if share_url:
+                    print(f"分享链接: {share_url}")
+                else:
+                    print("分享分组成功，但未返回链接。")
         else:
             parser.print_help()
             sys.exit(1)

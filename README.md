@@ -11,6 +11,8 @@
 - 获取所有自选股分组数据
 - 添加股票到指定自选股分组
 - 从指定自选股分组删除股票
+- 新增或删除自选分组 （by @Kerwin1202）
+- 分享分组生成短期链接 (by @Kerwin1202)
 - 本地缓存自选股数据，减少网络请求
 
 由于同花顺的“自选列表更新推送”依赖一个基于 TCP 长连接的 v4 协议，该协议较为复杂，网络上鲜有逆向后的资料，因此这里不提供该功能。
@@ -99,6 +101,14 @@ ths = THSUserFavorite(
 
 ```bash
 python main.py --auth-method credentials --username <13300000000> --password <yourpass> list
+```
+
+常用分组管理命令：
+
+```bash
+python main.py group-add "新分组"
+python main.py group-delete 消费
+python main.py group-share 消费 604800   # 有效期 7 天
 ```
 
 ### 股票代码格式
