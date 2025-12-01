@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-import httpx
 import json
 import os
 from loguru import logger # 导入 loguru
+from requests import Response, Session
+from requests.exceptions import HTTPError, RequestException
 # 假设 constant.py 和 cookie.py 中的函数已定义
 # 建议显式导入，例如:
 from constant import market_abbr, market_code
@@ -74,7 +75,7 @@ T_HttpApiClient = TypeVar('T_HttpApiClient', bound='THSHttpApiClient')
 
 class THSHttpApiClient:
     """
-    一个通用的 HTTP API 客户端，封装了 httpx 请求的发送、
+    一个通用的 HTTP API 客户端，封装了 requests 请求的发送、
     Cookie 管理、基本头部设置和错误处理。
     """
     _DEFAULT_RETRY_COUNT: int = 3
@@ -83,22 +84,23 @@ class THSHttpApiClient:
                  base_url: str,
                  cookies: Union[str, Dict[str, str], None] = None,
                  headers: Optional[Dict[str, str]] = None,
-                 client: Optional[httpx.Client] = None,
+                 client: Optional[Session] = None,
                  timeout: float = 10.0,
-                 http2: bool = False): # 默认不启用 HTTP/2，与您提供的一致
+                 http2: bool = False): # requests 未原生支持 HTTP/2，此参数保留以兼容旧调用
         self.base_url: str = base_url.rstrip('/')
         logger.debug(f"THSHttpApiClient 初始化: base_url='{self.base_url}', http2={http2}, timeout={timeout}s")
         self._internal_cookies: Dict[str, str] = {}
+        self._timeout: float = timeout
 
         if client:
-            self._client: httpx.Client = client
+            self._client: Session = client
             self._is_external_client: bool = True
-            logger.info("使用外部传入的 httpx.Client 实例。")
+            logger.info("使用外部传入的 requests.Session 实例。")
             if cookies:
                 self.set_cookies(cookies)
         else:
-            logger.info(f"创建内部 httpx.Client 实例: http2={http2}, timeout={timeout}s。")
-            self._client = httpx.Client(http2=http2, timeout=timeout)
+            logger.info(f"创建内部 requests.Session 实例 (timeout={timeout}s)。HTTP/2 参数将被忽略。")
+            self._client = Session()
             self._is_external_client = False
             if cookies:
                 self.set_cookies(cookies)
@@ -198,13 +200,14 @@ class THSHttpApiClient:
 
         response = None
         try:
-            response: httpx.Response = self._client.request(
-                method,
-                full_url,
+            response: Response = self._client.request(
+                method=method,
+                url=full_url,
                 params=params,
                 data=data,
                 json=json_payload,
-                headers=request_headers
+                headers=request_headers,
+                timeout=self._timeout
             )
             logger.debug(f"收到响应: 状态码 {response.status_code}, URL: {response.url}")
             response.raise_for_status()
@@ -219,13 +222,15 @@ class THSHttpApiClient:
             logger.debug(f"成功解析响应为JSON: {str(json_response)[:200]}...") # 截断过长的日志
             return json_response
 
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP错误 ({method} {full_url}): 状态码 {e.response.status_code}, 响应: {e.response.text[:200]}...")
+        except HTTPError as e:
+            status_code = e.response.status_code if e.response else '未知'
+            resp_preview = e.response.text[:200] if e.response and e.response.text else ''
+            logger.error(f"HTTP错误 ({method} {full_url}): 状态码 {status_code}, 响应: {resp_preview}...")
             raise # 重新抛出，让调用者处理
-        except httpx.RequestError as e:
+        except RequestException as e:
             logger.error(f"请求错误 ({method} {full_url}): {e}")
             raise
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             resp_text_preview = ''
             try:
                 # 在此作用域中，response 仅在 try 块成功时存在
@@ -249,11 +254,11 @@ class THSHttpApiClient:
         return self.request("POST", endpoint, json_payload=json_payload, **kwargs)
 
     def close(self) -> None:
-        if not self._is_external_client and hasattr(self._client, "is_closed") and not self._client.is_closed:
+        if not self._is_external_client and hasattr(self, "_client"):
             self._client.close()
-            logger.info("内部 THSHttpApiClient 的 httpx.Client 已关闭。")
+            logger.info("内部 THSHttpApiClient 的 requests.Session 已关闭。")
         elif self._is_external_client:
-            logger.debug("THSHttpApiClient 使用的是外部 Client，不在此处关闭。")
+            logger.debug("THSHttpApiClient 使用的是外部 Session，不在此处关闭。")
 
 
     def __enter__(self: T_HttpApiClient) -> T_HttpApiClient:
@@ -321,13 +326,14 @@ class THSUserFavorite:
         api_response: Optional[Dict[str, Any]] = None
         try:
             api_response = self.api_client.get(self._QUERY_ENDPOINT, params=params)
-        except httpx.HTTPStatusError as e: # 已在api_client.request中记录，这里可选择再次记录或简化
-            logger.error(f"获取原始分组数据时发生HTTP状态错误 (已由APIClient记录): {e.response.status_code}")
+        except HTTPError as e: # 已在api_client.request中记录，这里可选择再次记录或简化
+            status = e.response.status_code if e.response else '未知'
+            logger.error(f"获取原始分组数据时发生HTTP状态错误 (已由APIClient记录): {status}")
             return None
-        except httpx.RequestError as e:
+        except RequestException as e:
             logger.error(f"获取原始分组数据时发生请求错误 (已由APIClient记录): {e}")
             return None
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"获取原始分组数据时发生JSON解码错误 (已由APIClient记录): {e}")
             return None
         except Exception as e:
@@ -561,13 +567,14 @@ class THSUserFavorite:
         api_response: Optional[Dict[str, Any]] = None
         try:
             api_response = self.api_client.post_form_urlencoded(endpoint, data=payload)
-        except httpx.HTTPStatusError as e:
-            logger.error(f"{action_name}项目API HTTP错误 (已由APIClient记录): {e.response.status_code}")
+        except HTTPError as e:
+            status = e.response.status_code if e.response else '未知'
+            logger.error(f"{action_name}项目API HTTP错误 (已由APIClient记录): {status}")
             return None
-        except httpx.RequestError as e:
+        except RequestException as e:
             logger.error(f"{action_name}项目API请求错误 (已由APIClient记录): {e}")
             return None
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, ValueError) as e:
             logger.error(f"{action_name}项目API响应JSON解析错误 (已由APIClient记录): {e}")
             return None
         except Exception as e:
