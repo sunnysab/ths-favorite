@@ -16,13 +16,13 @@
 | `--username` / `--password` | `None` | `auth-method=credentials` 时必填的账号、密码。 |
 | `--cookie-cache <path>` | `ths_cookie_cache.json` | 覆盖默认的 Cookie 缓存文件路径，缓存有效期 24 小时。 |
 
+> 仅提供 `--username` 而不提供 `--password` 时，CLI 只会尝试读取该账号的缓存，未命中会直接提示补充密码。
 > 这些全局选项可放在任意子命令之前，例如 `python main.py --auth-method credentials --username 13300000000 --password pass list`。
 
 ### 1.3 子命令总览
 | 子命令 | 作用 | 关键参数 |
 | --- | --- | --- |
 | `list` | 列出所有分组，或使用 `-g/--group` 查看单个分组内股票。 | `-g/--group <名称或ID>` （可选） |
-| `group list` | 与 `list` 相同，只是使用层级式命令。 | 同上 |
 | `group add` | 新建分组。 | `name`：分组名称 |
 | `group del` | 删除现有分组。 | `group`：名称或 ID |
 | `group share` | 分享分组生成临时链接。 | `group`：名称或 ID；`valid_time`：有效期秒数 |
@@ -34,7 +34,6 @@
   ```bash
   python main.py list                # 列出全部分组及股票数量
   python main.py list -g 消费        # 仅输出“消费”分组下的股票代码
-  python main.py group list -g 消费  # 也可以通过 group list 执行
   ```
 - `stock add`
   ```bash
@@ -98,8 +97,8 @@ with PortfolioManager(
 | 方法 | 说明 | 返回值 |
 | --- | --- | --- |
 | `get_all_groups(use_cache=False)` | 拉取并解析所有分组；`use_cache=True` 时在网络失败时回退到内存缓存。 | `Dict[str, StockGroup]` |
-| `add_item_to_group(group, code)` | `group` 可为名称或 ID；`code` 需包含市场后缀，如 `000001.SZ`。 | API 返回的字典（含版本信息） |
-| `delete_item_from_group(group, code)` | 删除指定股票。 | 同上 |
+| `add_item_to_group(group, symbol)` | `group` 可为名称或 ID；`symbol` 需包含市场后缀，如 `000001.SZ`。 | API 返回的字典（含版本信息） |
+| `delete_item_from_group(group, symbol)` | 删除指定股票。 | 同上 |
 | `add_group(name)` | 新增分组。 | 同上 |
 | `delete_group(group)` | 删除分组（不可恢复，谨慎操作）。 | 同上 |
 | `share_group(group, valid_time)` | 创建分享链接，`valid_time` 为秒。 | `dict`，通常包含 `share_url` |

@@ -35,6 +35,18 @@ class PortfolioManager:
         cookie_cache_path: Optional[str] = None,
         cookie_cache_ttl_seconds: int = COOKIE_CACHE_TTL_SECONDS,
     ) -> None:
+        """Initialize the manager.
+
+        Args:
+            cookies: Optional raw cookie string or dict to bypass authentication.
+            api_client: Custom ApiClient instance for advanced integrations.
+            auth_method: How to acquire cookies (`browser`, `credentials`, or `none`).
+            browser_name: Browser to read cookies from when auth_method="browser".
+            username: Account username when using credential authentication.
+            password: Account password when using credential authentication.
+            cookie_cache_path: Override path for cached cookies.
+            cookie_cache_ttl_seconds: Custom TTL (seconds) for cached cookies.
+        """
         self._group_cache_path: str = GROUP_CACHE_FILE
         self._groups_cache: Dict[str, StockGroup] = load_groups_cache(self._group_cache_path)
         self._current_version: Optional[Union[str, int]] = None
@@ -109,25 +121,25 @@ class PortfolioManager:
         logger.info("成功获取并处理了 %d 个分组。", len(formatted))
         return formatted
 
-    def add_item_to_group(self, group_identifier: str, code_with_market_suffix: str) -> Dict[str, Any]:
-        logger.info("尝试添加项目 '%s' 到分组 '%s'...", code_with_market_suffix, group_identifier)
+    def add_item_to_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
+        logger.info("尝试添加项目 '%s' 到分组 '%s'...", symbol, group_identifier)
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("添加股票", f"未能找到分组 '{group_identifier}'")
 
-        item_code, api_item_type = self._parse_code_with_market_suffix(code_with_market_suffix)
+        item_code, api_item_type = self._parse_symbol(symbol)
         version = self._ensure_version_available()
         result = self._api.add_item(target_group_id, item_code, api_item_type, version)
         self.get_all_groups(use_cache=False)
         return result
 
-    def delete_item_from_group(self, group_identifier: str, code_with_market_suffix: str) -> Dict[str, Any]:
-        logger.info("尝试删除项目 '%s' 从分组 '%s'...", code_with_market_suffix, group_identifier)
+    def delete_item_from_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
+        logger.info("尝试删除项目 '%s' 从分组 '%s'...", symbol, group_identifier)
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("删除股票", f"未能找到分组 '{group_identifier}'")
 
-        item_code, api_item_type = self._parse_code_with_market_suffix(code_with_market_suffix)
+        item_code, api_item_type = self._parse_symbol(symbol)
         version = self._ensure_version_available()
         result = self._api.delete_item(target_group_id, item_code, api_item_type, version)
         self.get_all_groups(use_cache=False)
@@ -208,14 +220,14 @@ class PortfolioManager:
         )
         return version
 
-    def get_item_snapshot(self, code_with_market_suffix: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
+    def get_item_snapshot(self, symbol: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
         if refresh or not self._selfstock_detail_map:
             self.refresh_selfstock_detail(force=True)
 
-        if "." not in code_with_market_suffix:
+        if "." not in symbol:
             raise THSAPIError("查询股票", "股票代码需包含市场后缀，例如 '600519.SH'")
 
-        code_part, market_suffix = code_with_market_suffix.rsplit(".", 1)
+        code_part, market_suffix = symbol.rsplit(".", 1)
         key = self._detail_key(code_part, market_suffix)
         meta = self._selfstock_detail_map.get(key) or self._selfstock_detail_map.get((code_part, ""))
         if not meta:
@@ -256,10 +268,10 @@ class PortfolioManager:
             return self._groups_cache[group_identifier].group_id
         return None
 
-    def _parse_code_with_market_suffix(self, code_with_market_suffix: str) -> Tuple[str, str]:
-        if "." not in code_with_market_suffix:
-            raise THSAPIError("解析股票代码", f"股票代码格式无效: '{code_with_market_suffix}'")
-        code_part, market_suffix_part = code_with_market_suffix.rsplit(".", 1)
+    def _parse_symbol(self, symbol: str) -> Tuple[str, str]:
+        if "." not in symbol:
+            raise THSAPIError("解析股票代码", f"股票代码格式无效: '{symbol}'")
+        code_part, market_suffix_part = symbol.rsplit(".", 1)
         api_market_type_code = market_code(market_suffix_part.upper())
         if not api_market_type_code:
             raise THSAPIError("解析股票代码", f"未知的市场后缀: '{market_suffix_part}'")

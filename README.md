@@ -98,8 +98,7 @@ with PortfolioManager() as portfolio:
 ```bash
 # 列出全部分组或查看单个分组
 python main.py list
-python main.py list -g 消费          # 与 group list -g 相同
-python main.py group list -g 消费    # 层级命令写法
+python main.py list -g 消费          # 使用 -g 查看指定分组
 
 # 添加 / 删除股票（代码格式为 CODE.MARKET）
 python main.py stock add 消费 600519.SH
@@ -121,7 +120,7 @@ python main.py --auth-method credentials --username 13300000000 --password yourp
 `PortfolioManager` 提供三种方式来初始化会话：
 
 - `auth_method="browser"`（默认）：通过 `browser_cookie3` 读取指定浏览器（默认 Firefox）中在 `*.10jqka.com.cn` 下的 Cookie。
-- `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`。
+- `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`；仅提供用户名时只会尝试读取该账号的缓存，未命中即提示补充密码。
 - `auth_method="none"`：跳过自动处理，此时可以通过 `cookies` 参数显式传入。
 
 示例：

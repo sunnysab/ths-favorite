@@ -13,7 +13,6 @@ Dependencies: ``requests`` and ``cryptography``. Install with
 import base64
 import hashlib
 import json
-import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Union
@@ -26,7 +25,6 @@ from config import COOKIE_CACHE_FILE, COOKIE_CACHE_TTL_SECONDS
 from cookie import load_browser_cookie, parse_cookie_header, parse_cookie_string
 from exceptions import THSAPIError, THSNetworkError
 from storage import (
-    load_cookie_cache_data,
     read_cached_cookies,
     write_cookie_cache,
 )
@@ -37,9 +35,9 @@ UPASS_BASE = "https://upass.10jqka.com.cn"
 DOC_COOKIE_PATH = "/docookie2.php"
 USER_AGENT = "同花顺/7.0.10 CFNetwork/1333.0.4 Darwin/21.5.0"
 IMEI_ENCODED = "ZjI6MDY6NGE6NzI6MjQ6NTA="
-QSID = "8003"
-PRODUCT = "S01"
-SECURITIES = r"%E5%90%8C%E8%8A%B1%E9%A1%BA%E8%BF%9C%E8%88%AA%E7%89%88"
+QSID = "8003"  # 设备类型标识，抓包得到的移动端取值
+PRODUCT = "S01"  # 代表同花顺客户端渠道
+SECURITIES = r"%E5%90%8C%E8%8A%B1%E9%A1%BA%E8%BF%9C%E8%88%AA%E7%89%88"  # URL 编码后的产品名称
 RSA_VERSION_FALLBACK = "default_5"
 TA_APP_ID = "2022021114090152"
 REQUEST_TIMEOUT = 10.0
@@ -258,24 +256,23 @@ class SessionManager:
                 lambda: self._load_from_credentials(self._username, self._password),
             )
 
-        cached_by_user: Optional[Dict[str, str]] = None
         if self._username:
             cache_key = self._credentials_cache_key(self._username)
-            cached_by_user = read_cached_cookies(
+            cached = read_cached_cookies(
                 self._cookie_cache_path,
                 cache_key,
                 self._cookie_cache_ttl,
             )
-            if cached_by_user:
-                return cached_by_user
-
-        latest = self._load_latest_credentials_cache()
-        if latest:
-            return latest
+            if cached:
+                return cached
+            raise THSAPIError(
+                "认证",
+                f"未找到用户 '{self._username}' 的凭据缓存，请同时提供密码 (--password)。",
+            )
 
         raise THSAPIError(
             "认证",
-            "auth_method=credentials 需要提供 username/password，或预先缓存的凭据。",
+            "auth_method=credentials 需要同时提供 username 和 password。",
         )
 
     def _fetch_with_cache(
@@ -305,30 +302,6 @@ class SessionManager:
         session = self._login_factory(username, password)
         return session.cookies
 
-    def _load_latest_credentials_cache(self) -> Optional[Dict[str, str]]:
-        cache_data = load_cookie_cache_data(self._cookie_cache_path)
-        if not cache_data:
-            return None
-        latest_payload: Optional[Dict[str, str]] = None
-        latest_ts = float("-inf")
-        now = time.time()
-        for key, entry in cache_data.items():
-            if not isinstance(key, str) or not key.startswith("credentials::"):
-                continue
-            timestamp = entry.get("timestamp")
-            try:
-                timestamp_value = float(timestamp)
-            except (TypeError, ValueError):
-                continue
-            if now - timestamp_value > self._cookie_cache_ttl:
-                continue
-            if timestamp_value <= latest_ts:
-                continue
-            cookies_payload = entry.get("cookies")
-            if isinstance(cookies_payload, dict) and cookies_payload:
-                latest_payload = {str(k): str(v) for k, v in cookies_payload.items()}
-                latest_ts = timestamp_value
-        return latest_payload
 
     @staticmethod
     def _browser_cache_key(browser_name: str) -> str:

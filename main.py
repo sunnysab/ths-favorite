@@ -52,18 +52,21 @@ def _format_added_at(raw: Any) -> str:
 
     if text.isdigit():
         if len(text) == 8:
+            # Handle YYYYMMDD format collected from older exports
             try:
                 dt_obj = datetime.strptime(text, "%Y%m%d")
                 return dt_obj.strftime("%Y-%m-%d")
             except ValueError:
                 pass
         elif len(text) == 14:
+            # Handle YYYYMMDDHHMMSS strings that THS occasionally returns
             try:
                 dt_obj = datetime.strptime(text, "%Y%m%d%H%M%S")
                 return dt_obj.strftime("%Y-%m-%d %H:%M")
             except ValueError:
                 pass
         elif len(text) in (10, 13):
+            # Handle 10-digit (seconds) or 13-digit (milliseconds) epoch timestamps
             try:
                 epoch_value = float(text)
             except ValueError:
@@ -111,13 +114,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     group_subparsers = group_parser.add_subparsers(dest="group_command")
     group_subparsers.required = True
-
-    group_list_parser = group_subparsers.add_parser(
-        "list",
-        parents=[global_parser],
-        help="列出全部分组或指定分组",
-    )
-    group_list_parser.add_argument("-g", "--group", help="指定分组名称，列出该分组中的股票")
 
     group_add_parser = group_subparsers.add_parser(
         "add",
@@ -213,10 +209,10 @@ def list_stocks(manager: PortfolioManager, group_name: str) -> None:
 
     rows = []
     for item in sorted(group.items, key=lambda entry: (entry.code, entry.market or "")):
-        code_with_market = f"{item.code}.{item.market}" if item.market else item.code
+        symbol = f"{item.code}.{item.market}" if item.market else item.code  # 标准 code.market 形式
         rows.append(
             [
-                code_with_market,
+                symbol,
                 item.market or "-",
                 _format_price(item.price),
                 _format_added_at(item.added_at),
@@ -228,9 +224,7 @@ def list_stocks(manager: PortfolioManager, group_name: str) -> None:
 
 
 def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
-    if args.group_command == "list":
-        list_groups(manager, getattr(args, "group", None))
-    elif args.group_command == "add":
+    if args.group_command == "add":
         manager.add_group(args.name)
         print(f"✅ 已成功创建分组 '{args.name}'")
     elif args.group_command == "del":
@@ -243,6 +237,8 @@ def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) ->
             print(f"🔗 分享链接: {share_url}")
         else:
             print("✅ 分享分组成功，但未返回链接。")
+    else:
+        raise THSAPIError("分组命令", f"未知的子命令 {args.group_command}")
 
 
 def handle_stock_command(manager: PortfolioManager, args: argparse.Namespace) -> None:

@@ -35,29 +35,23 @@ class FavoriteAPI:
         return self._extract_data(response, "获取分组")
 
     def add_item(self, group_id: str, item_code: str, api_item_type: str, version: str) -> Dict[str, Any]:
-        payload = {
-            "id": group_id,
-            "content": f"{item_code},{api_item_type}",
-            "num": "1",
-        }
-        return self._post_with_version(
+        return self._item_operation(
             ENDPOINTS["add_item"],
-            payload,
-            version,
             "添加股票",
+            group_id,
+            item_code,
+            api_item_type,
+            version,
         )
 
     def delete_item(self, group_id: str, item_code: str, api_item_type: str, version: str) -> Dict[str, Any]:
-        payload = {
-            "id": group_id,
-            "content": f"{item_code},{api_item_type}",
-            "num": "1",
-        }
-        return self._post_with_version(
+        return self._item_operation(
             ENDPOINTS["delete_item"],
-            payload,
-            version,
             "删除股票",
+            group_id,
+            item_code,
+            api_item_type,
+            version,
         )
 
     def add_group(self, name: str, version: str) -> Dict[str, Any]:
@@ -82,6 +76,22 @@ class FavoriteAPI:
             version,
             "删除分组",
         )
+
+    def _item_operation(
+        self,
+        endpoint: str,
+        action_name: str,
+        group_id: str,
+        item_code: str,
+        api_item_type: str,
+        version: str,
+    ) -> Dict[str, Any]:
+        payload = {
+            "id": group_id,
+            "content": f"{item_code},{api_item_type}",
+            "num": "1",
+        }
+        return self._post_with_version(endpoint, payload, version, action_name)
 
     def share_group(self, share_payload: Dict[str, Any]) -> Dict[str, Any]:
         response = self._client.post_form_json(ENDPOINTS["share_group"], data=share_payload)
