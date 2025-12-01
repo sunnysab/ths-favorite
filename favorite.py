@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import hashlib
 import json
 import os
+import time
 from loguru import logger # 导入 loguru
 from requests import Response, Session
 from requests.exceptions import HTTPError, RequestException
@@ -8,12 +10,16 @@ from requests.exceptions import HTTPError, RequestException
 # 建议显式导入，例如:
 from constant import market_abbr, market_code
 from cookie import load_browser_cookie
-from typing import List, Optional, Dict, Any, Set, Union, Tuple, TypeVar, Type
+from auth import create_session
+from typing import List, Optional, Dict, Any, Set, Union, Tuple, TypeVar, Type, Callable
 
 # 全局默认请求头
 _DEFAULT_HEADERS: Dict[str, str] = {
     "User-Agent": "Hexin_Gphone/11.28.03 (Royal Flush) hxtheme/0 innerversion/G037.09.028.1.32 followPhoneSystemTheme/0 userid/500780707 getHXAPPAccessibilityMode/0 hxNewFont/1 isVip/0 getHXAPPFontSetting/normal getHXAPPAdaptOldSetting/0 okhttp/3.14.9",
 }
+
+_COOKIE_CACHE_FILE: str = "ths_cookie_cache.json"
+_COOKIE_CACHE_TTL_SECONDS: int = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -285,17 +291,38 @@ class THSUserFavorite:
 
     def __init__(self,
                  cookies: Union[str, Dict[str, str], None] = None,
-                 api_client: Optional[THSHttpApiClient] = None):
+                 api_client: Optional[THSHttpApiClient] = None,
+                 *,
+                 auth_method: str = "browser",
+                 browser_name: str = "firefox",
+                 username: Optional[str] = None,
+                 password: Optional[str] = None,
+                 cookie_cache_path: Optional[str] = None,
+                 cookie_cache_ttl_seconds: int = _COOKIE_CACHE_TTL_SECONDS):
         logger.info("THSUserFavorite 服务初始化...")
+        self._cookie_cache_path: str = cookie_cache_path or _COOKIE_CACHE_FILE
+        self._cookie_cache_ttl_seconds: int = cookie_cache_ttl_seconds
+
+        resolved_cookies: Union[str, Dict[str, str], None] = cookies
+        if resolved_cookies is None:
+            resolved_cookies = self._resolve_cookies_via_auth_method(
+                auth_method=auth_method,
+                browser_name=browser_name,
+                username=username,
+                password=password
+            )
+
         if api_client:
             self.api_client: THSHttpApiClient = api_client
             self._is_external_api_client: bool = True
             logger.info("使用外部传入的 THSHttpApiClient 实例。")
+            if resolved_cookies:
+                self.set_cookies(resolved_cookies)
         else:
             logger.info("创建内部 THSHttpApiClient 实例。")
             self.api_client = THSHttpApiClient(
                 base_url=self._API_BASE_URL,
-                cookies=cookies,
+                cookies=resolved_cookies,
                 headers=_DEFAULT_HEADERS
             )
             self._is_external_api_client = False
@@ -404,6 +431,154 @@ class THSUserFavorite:
             logger.info(f"已成功将 {len(cache_data_to_save)} 个分组保存到缓存文件 '{self._CACHE_FILE}'。")
         except Exception as e:
             logger.exception(f"保存缓存到文件时发生错误。")
+
+
+    def _resolve_cookies_via_auth_method(self,
+                                         auth_method: str,
+                                         browser_name: str,
+                                         username: Optional[str],
+                                         password: Optional[str]) -> Optional[Dict[str, str]]:
+        method = (auth_method or "").strip().lower()
+        if not method:
+            logger.info("未指定 auth_method，跳过自动加载 cookies。")
+            return None
+
+        if method == "browser":
+            cache_key = self._browser_cache_key(browser_name)
+            return self._fetch_cookies_with_cache(
+                cache_key,
+                lambda: self._load_cookies_from_browser(browser_name)
+            )
+        if method in {"credentials", "login"}:
+            if not username or not password:
+                logger.error("auth_method=credentials 需要提供 username 与 password。")
+                return None
+            cache_key = self._credentials_cache_key(username)
+            return self._fetch_cookies_with_cache(
+                cache_key,
+                lambda: self._load_cookies_from_credentials(username, password)
+            )
+        if method in {"none", "skip"}:
+            logger.info("auth_method 设为 %s，跳过自动加载 cookies。", auth_method)
+            return None
+
+        logger.error("未知的 auth_method: %s。可选值: browser, credentials。", auth_method)
+        return None
+
+    def _fetch_cookies_with_cache(self,
+                                  cache_key: str,
+                                  loader: Callable[[], Optional[Dict[str, str]]]
+                                  ) -> Optional[Dict[str, str]]:
+        cached = self._read_cached_cookies(cache_key)
+        if cached:
+            logger.info(f"命中 cookies 缓存: {cache_key}")
+            return cached
+
+        logger.info(f"缓存未命中，准备刷新 cookies: {cache_key}")
+        fresh = loader()
+        if fresh:
+            self._write_cookie_cache(cache_key, fresh)
+        return fresh
+
+    def _read_cached_cookies(self, cache_key: str) -> Optional[Dict[str, str]]:
+        cache_data = self._load_cookie_cache_data()
+        entry = cache_data.get(cache_key)
+        if not entry:
+            return None
+
+        timestamp = entry.get("timestamp")
+        try:
+            timestamp_value = float(timestamp)
+        except (TypeError, ValueError):
+            return None
+
+        if time.time() - timestamp_value > self._cookie_cache_ttl_seconds:
+            logger.info(f"cookies 缓存已过期: {cache_key}")
+            return None
+
+        cookies_payload = entry.get("cookies")
+        if isinstance(cookies_payload, dict) and cookies_payload:
+            return {str(k): str(v) for k, v in cookies_payload.items()}
+        return None
+
+    def _write_cookie_cache(self, cache_key: str, cookies_payload: Dict[str, str]) -> None:
+        cache_data = self._load_cookie_cache_data()
+        serializable = {str(k): str(v) for k, v in cookies_payload.items()}
+        cache_data[cache_key] = {
+            "cookies": serializable,
+            "timestamp": time.time()
+        }
+        dir_name = os.path.dirname(self._cookie_cache_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        try:
+            with open(self._cookie_cache_path, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            logger.info(f"已更新 cookies 缓存: {self._cookie_cache_path} -> {cache_key}")
+        except Exception:
+            logger.exception("写入 cookies 缓存文件失败。")
+
+    def _load_cookie_cache_data(self) -> Dict[str, Any]:
+        if not os.path.exists(self._cookie_cache_path):
+            return {}
+        try:
+            with open(self._cookie_cache_path, 'r', encoding='utf-8') as f:
+                cached_data = json.load(f)
+            if isinstance(cached_data, dict):
+                return cached_data
+        except json.JSONDecodeError:
+            logger.warning(f"cookies 缓存文件 '{self._cookie_cache_path}' 内容无效，将忽略。")
+        except Exception:
+            logger.exception("读取 cookies 缓存文件失败。")
+        return {}
+
+    @staticmethod
+    def _browser_cache_key(browser_name: str) -> str:
+        normalized = (browser_name or "default").lower()
+        return f"browser::{normalized}"
+
+    @staticmethod
+    def _credentials_cache_key(username: str) -> str:
+        digest = hashlib.sha256(username.encode('utf-8')).hexdigest()
+        return f"credentials::{digest}"
+
+    def _load_cookies_from_browser(self, browser_name: str) -> Optional[Dict[str, str]]:
+        logger.info(f"尝试从浏览器 '{browser_name}' 读取 cookies…")
+        try:
+            raw_cookies = load_browser_cookie(browser_name)
+        except Exception:
+            logger.exception("从浏览器读取 cookies 失败。")
+            return None
+
+        cookie_dict: Dict[str, str] = {}
+        for cookie in raw_cookies:
+            name = getattr(cookie, 'name', None)
+            value = getattr(cookie, 'value', None)
+            if name and value is not None:
+                cookie_dict[str(name)] = str(value)
+
+        if cookie_dict:
+            logger.info(f"成功从浏览器 '{browser_name}' 读取 {len(cookie_dict)} 个 cookies。")
+            return cookie_dict
+
+        logger.warning(f"浏览器 '{browser_name}' 中未找到有效的 cookies。")
+        return None
+
+    def _load_cookies_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
+        logger.info("使用账号密码登录获取 cookies…")
+        try:
+            session_result = create_session(username=username, password=password)
+        except Exception:
+            logger.exception("账号密码登录失败，无法获取 cookies。")
+            return None
+
+        cookies_payload = session_result.cookies
+        if cookies_payload:
+            logger.info(f"账号登录成功，获得 {len(cookies_payload)} 个 cookies。")
+            return cookies_payload
+
+        logger.warning("账号登录成功但未返回任何 cookies。")
+        return None
 
 
     def parse_group_list(self, raw_data: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -32,6 +32,13 @@ def list_stocks(ths: THSUserFavorite, group_name: str):
 
 def main():
     parser = argparse.ArgumentParser(description="同花顺自选股管理工具")
+    parser.add_argument("--auth-method", choices=["browser", "credentials", "none"], default="browser",
+                        help="选择获取 cookies 的方式: browser / credentials / none")
+    parser.add_argument("--browser", default="firefox", help="当 auth-method=browser 时指定浏览器名称")
+    parser.add_argument("--username", help="当 auth-method=credentials 时使用的账号")
+    parser.add_argument("--password", help="当 auth-method=credentials 时使用的密码")
+    parser.add_argument("--cookie-cache", help="自定义 cookies 缓存文件路径")
+
     subparsers = parser.add_subparsers(dest="command", help="子命令")
     
     # list 命令
@@ -50,8 +57,14 @@ def main():
     
     args = parser.parse_args()
     
-    # 创建 THSUserGroups 实例
-    with THSUserFavorite() as ths:
+    # 创建 THSUserFavorite 实例
+    with THSUserFavorite(
+        auth_method=args.auth_method,
+        browser_name=args.browser,
+        username=args.username,
+        password=args.password,
+        cookie_cache_path=args.cookie_cache
+    ) as ths:
         # 处理命令
         if args.command == "list":
             if args.group:

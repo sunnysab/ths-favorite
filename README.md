@@ -4,11 +4,14 @@
 
 ## 项目功能
 
-- 自动从浏览器获取同花顺的登录Cookie
+- 通过同花顺密码或浏览器Cookie登录
 - 获取所有自选股分组数据
 - 添加股票到指定自选股分组
 - 从指定自选股分组删除股票
 - 本地缓存自选股数据，减少网络请求
+
+由于同花顺的“自选列表更新推送”依赖一个基于 TCP 长连接的 v4 协议，该协议较为复杂，网络上鲜有逆向后的资料，因此这里不提供该功能。
+你可以定时刷新自选分组，检测是否有更新。
 
 ## 安装方法
 
@@ -25,12 +28,6 @@ cd ths-favorite
 
 ```bash
 pip install -e .
-```
-
-或者直接安装核心依赖:
-
-```bash
-pip install requests loguru cryptography
 ```
 
 如果需要从浏览器获取 Cookie 功能，请额外安装可选依赖:
@@ -68,6 +65,37 @@ with THSUserFavorite() as ths:
     
     # 从分组删除股票
     ths.delete_item_from_group("消费", "600519.SH")
+```
+
+## Cookie 获取与缓存
+
+`THSUserFavorite` 提供三种方式来初始化会话：
+
+- `auth_method="browser"`（默认）：通过 `browser_cookie3` 读取指定浏览器（默认 Firefox）中在 `*.10jqka.com.cn` 下的 Cookie。
+- `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`。
+- `auth_method="none"`：跳过自动处理，此时可以通过 `cookies` 参数显式传入。
+
+示例：
+
+```python
+# 使用 Chrome 浏览器提取 Cookie，并使用默认的一天有效期缓存
+ths = THSUserFavorite(auth_method="browser", browser_name="chrome")
+
+# 使用账号密码登录，并自定义缓存文件位置
+ths = THSUserFavorite(
+    auth_method="credentials",
+    username="your_account",
+    password="your_password",
+    cookie_cache_path="/tmp/ths_cookies.json"
+)
+```
+
+无论是通过浏览器还是账号密码获取的 Cookie，都会写入 `ths_cookie_cache.json`（或自定义的 `cookie_cache_path`），缓存 24 小时，未过期时优先复用，超时后自动重新获取。
+
+命令行工具也支持同样的参数，例如：
+
+```bash
+python main.py --auth-method credentials --username <13300000000> --password <yourpass> list
 ```
 
 ### 股票代码格式
