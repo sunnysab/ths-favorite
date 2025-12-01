@@ -16,14 +16,32 @@
 
 ```bash
 git clone https://github.com/sunnysab/ths-favorite.git
-cd ths-collection
+cd ths-favorite
 ```
 
 ### 2. 安装依赖
 
+使用 pip 安装项目依赖:
+
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
+
+或者直接安装核心依赖:
+
+```bash
+pip install requests loguru cryptography
+```
+
+如果需要从浏览器获取 Cookie 功能，请额外安装可选依赖:
+
+```bash
+pip install 'ths-collection[browser]'
+# 或者直接安装
+pip install browser-cookie3
+```
+
+注意，`browser-cookie3` 库用于读取浏览器的 Cookie，它依赖了卷影服务以强行读出存储文件（[原理](https://www.cnblogs.com/zpchcbd/p/18860664)， [issue](https://github.com/sunnysab/ths-favorite/issues/2)），该操作**需要管理员权限**（[shadowcopy](https://pypi.org/project/shadowcopy/)）。请阅读代码并了解潜在的安全风险。
 
 ## 使用示例
 
@@ -73,7 +91,7 @@ with THSUserFavorite() as ths:
 
 ## 注意事项
 
-1. 首次使用前需确保浏览器已登录同花顺网站
+1. 如需使用从浏览器读取 Cookie 功能（需安装 browser-cookie3 依赖），请确保浏览器已登录同花顺网站
 2. 默认从 Firefox 浏览器读取 Cookie，如需使用其他浏览器可修改代码
 3. Cookie 过期后需重新登录浏览器
 

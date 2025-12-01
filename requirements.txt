@@ -1,5 +1,0 @@
-httpx
-loguru
-browser-cookie3
-cryptography
-requests

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ths-favorite"
+version = "0.1.0"
+description = "A tool for managing Tong Hua Suo stock favorites"
+authors = [
+    {name = "sunnysab"}
+]
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.7"
+
+dependencies = [
+    "loguru",
+    "cryptography",
+    "requests"
+]
+
+[project.optional-dependencies]
+browser = [
+    "browser-cookie3"
+]
+
+[project.urls]
+Homepage = "https://github.com/sunnysab/ths-favorite"
+Repository = "https://github.com/sunnysab/ths-favorite"
+
+[tool.setuptools]
+py-modules = ["auth", "constant", "cookie", "favorite", "main"]
