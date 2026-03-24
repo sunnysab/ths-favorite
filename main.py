@@ -2,15 +2,17 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import importlib
 import sys
 from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-import tabulate as tabulate_module
 
 from exceptions import THSAPIError, THSNetworkError
 from service import PortfolioManager
+
+_TABULATE_MODULE: Optional[Any] = None
 
 
 def _format_price(value: Optional[Any]) -> str:
@@ -78,6 +80,7 @@ def _format_added_at(raw: Any) -> str:
 
 
 def _render_table(rows: list[list[Any]], headers: list[str]) -> str:
+    tabulate_module = _get_tabulate_module()
     wide_chars_mode = getattr(tabulate_module, "WIDE_CHARS_MODE", None)
     if wide_chars_mode is None:
         return tabulate_module.tabulate(rows, headers=headers, tablefmt="github")
@@ -88,6 +91,21 @@ def _render_table(rows: list[list[Any]], headers: list[str]) -> str:
         return tabulate_module.tabulate(rows, headers=headers, tablefmt="github")
     finally:
         tabulate_module.WIDE_CHARS_MODE = original_mode
+
+
+def _get_tabulate_module() -> Any:
+    global _TABULATE_MODULE
+    if _TABULATE_MODULE is not None:
+        return _TABULATE_MODULE
+    try:
+        _TABULATE_MODULE = importlib.import_module("tabulate")
+    except ImportError as exc:
+        raise THSAPIError(
+            "CLI",
+            "当前命令需要可选 CLI 依赖。请运行 'pip install -e .[cli]'、"
+            "'pip install \"ths-favorite[cli]\"'，或使用 'uv sync --extra cli'。",
+        ) from exc
+    return _TABULATE_MODULE
 
 
 def build_parser() -> argparse.ArgumentParser:

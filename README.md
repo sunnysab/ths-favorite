@@ -30,21 +30,33 @@ cd ths-favorite
 
 ### 2. 安装依赖
 
-使用 pip 安装项目依赖:
+如果你只是把项目作为 Python 库依赖使用，基础依赖即可:
 
 ```bash
 pip install -e .
 ```
 
-如果需要从浏览器获取 Cookie 功能，请额外安装可选依赖:
+如果需要命令行表格输出，请额外安装 `cli` 可选依赖:
 
 ```bash
-pip install 'ths-collection[browser]'
-# 或者直接安装
-pip install browser-cookie3
+pip install -e '.[cli]'
+pip install 'ths-favorite[cli]'
+```
+
+如果需要从浏览器获取 Cookie 功能，请额外安装 `browser` 可选依赖:
+
+```bash
+pip install -e '.[browser]'
+pip install 'ths-favorite[browser]'
 ```
 
 注意，`browser-cookie3` 库用于读取浏览器的 Cookie。在 Windows 下，它依赖了卷影服务以强行读出存储文件（[原理](https://www.cnblogs.com/zpchcbd/p/18860664)，[issue](https://github.com/sunnysab/ths-favorite/issues/2)），该操作**需要管理员权限**（[shadowcopy](https://pypi.org/project/shadowcopy/)）。请阅读代码并了解潜在的安全风险。
+
+如果两者都需要，可以一次性安装：
+
+```bash
+pip install -e '.[cli,browser]'
+```
 
 ## 配置
 
@@ -100,6 +112,8 @@ with PortfolioManager() as portfolio:
 ```
 
 #### 命令行基本用法
+
+> CLI 依赖不属于基础安装。如需运行 `python main.py ...`，请先安装 `cli` 可选依赖。
 
 命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--browser`, `--username`, `--password`, `--cookie-cache`）。CLI 在未显式指定认证方式时会先看本地 Cookie 缓存：优先复用最近一次有效的账号密码缓存；若没有可用凭据缓存，再回退到浏览器 Cookie。常见操作如下：
 

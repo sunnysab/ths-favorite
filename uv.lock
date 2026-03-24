@@ -1204,15 +1204,17 @@ dependencies = [
     { name = "requests", version = "2.31.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version < '3.8'" },
     { name = "requests", version = "2.32.4", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version == '3.8.*'" },
     { name = "requests", version = "2.32.5", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version >= '3.9'" },
-    { name = "tabulate", version = "0.9.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "tabulate", version = "0.10.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "wcwidth", version = "0.2.14", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version < '3.8'" },
-    { name = "wcwidth", version = "0.6.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version >= '3.8'" },
 ]
 
 [package.optional-dependencies]
 browser = [
     { name = "browser-cookie3" },
+]
+cli = [
+    { name = "tabulate", version = "0.9.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "tabulate", version = "0.10.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "wcwidth", version = "0.2.14", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version < '3.8'" },
+    { name = "wcwidth", version = "0.6.0", source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }, marker = "python_full_version >= '3.8'" },
 ]
 
 [package.dev-dependencies]
@@ -1229,10 +1231,10 @@ requires-dist = [
     { name = "cryptography" },
     { name = "loguru" },
     { name = "requests" },
-    { name = "tabulate" },
-    { name = "wcwidth" },
+    { name = "tabulate", marker = "extra == 'cli'" },
+    { name = "wcwidth", marker = "extra == 'cli'" },
 ]
-provides-extras = ["browser"]
+provides-extras = ["cli", "browser"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest" }]

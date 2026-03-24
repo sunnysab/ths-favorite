@@ -5,7 +5,9 @@
 ## 1. 命令行工具
 
 ### 1.1 环境与入口
-- 确保已按 README 安装依赖：`pip install -e .` 或 `pip install ths-favorite`。
+- 作为 Python 库使用时，基础安装即可：`pip install -e .` 或 `pip install ths-favorite`。
+- 如需运行 CLI，请额外安装 `cli` 可选依赖：`pip install -e '.[cli]'` 或 `pip install 'ths-favorite[cli]'`。
+- 如需浏览器 Cookie 能力，请额外安装 `browser` 可选依赖：`pip install -e '.[browser]'` 或 `pip install 'ths-favorite[browser]'`。
 - 所有命令均通过 `python main.py <command>` 触发，可使用 `--help` 查看完整帮助。
 
 ### 1.2 全局选项

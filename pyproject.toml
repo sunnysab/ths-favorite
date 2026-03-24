@@ -17,11 +17,13 @@ dependencies = [
     "loguru",
     "cryptography",
     "requests",
-    "tabulate",
-    "wcwidth",
 ]
 
 [project.optional-dependencies]
+cli = [
+    "tabulate",
+    "wcwidth",
+]
 browser = [
     "browser-cookie3"
 ]

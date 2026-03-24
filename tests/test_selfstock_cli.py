@@ -2,7 +2,9 @@ import argparse
 import unittest
 from unittest.mock import Mock, patch
 
+import main
 from config import SELF_STOCK_DEFAULT_NAME, SELF_STOCK_GROUP_ID
+from exceptions import THSAPIError
 from main import (
     apply_global_defaults,
     build_parser,
@@ -21,6 +23,9 @@ def parse_args(argv):
 
 
 class SelfstockCliTest(unittest.TestCase):
+    def setUp(self):
+        main._TABULATE_MODULE = None
+
     def test_self_list_command_is_supported(self):
         args = parse_args(["self", "list"])
 
@@ -76,6 +81,16 @@ class SelfstockCliTest(unittest.TestCase):
 
         manager.get_self_stocks.assert_called_once_with(name=SELF_STOCK_DEFAULT_NAME)
         manager.get_all_groups.assert_not_called()
+
+    @patch("main.importlib.import_module", side_effect=ImportError("missing tabulate"))
+    def test_list_groups_raises_friendly_error_when_cli_dependency_is_missing(self, _mock_import):
+        manager = Mock()
+        manager.get_all_groups.return_value = {
+            "消费": StockGroup(name="消费", group_id="g1", items=[object()] * 1),
+        }
+
+        with self.assertRaisesRegex(THSAPIError, "ths-favorite\\[cli\\]"):
+            list_groups(manager)
 
 
 if __name__ == "__main__":
