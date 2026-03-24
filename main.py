@@ -165,8 +165,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def apply_global_defaults(args: argparse.Namespace) -> None:
+    if not hasattr(args, "auth_method"):
+        has_explicit_credentials = bool(getattr(args, "username", None) or getattr(args, "password", None))
+        has_explicit_browser = hasattr(args, "browser")
+        if has_explicit_credentials:
+            args.auth_method = "credentials"
+        elif has_explicit_browser:
+            args.auth_method = "browser"
+        else:
+            args.auth_method = "auto"
+
     defaults = {
-        "auth_method": "browser",
         "browser": "firefox",
         "username": None,
         "password": None,

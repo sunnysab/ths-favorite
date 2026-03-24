@@ -11,13 +11,14 @@
 ### 1.2 全局选项
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--auth-method {browser,credentials,none}` | `browser` | 选择获取 Cookie 的方式。`browser` 自动从浏览器读取；`credentials` 使用账号密码；`none` 表示手动传入 Cookie（需结合 `service.PortfolioManager(cookies=...)` ）。 |
+| `--auth-method {browser,credentials,none}` | 自动推断 | 选择获取 Cookie 的方式。`browser` 自动从浏览器读取；`credentials` 使用账号密码；`none` 表示手动传入 Cookie（需结合 `service.PortfolioManager(cookies=...)` ）。如果未显式传该参数，CLI 会优先尝试本地缓存；提供了 `--username` / `--password` 时会自动切换到 `credentials`。 |
 | `--browser <name>` | `firefox` | `auth-method=browser` 时使用的浏览器标识，`browser_cookie3` 支持 `chrome`、`edge`、`firefox` 等。 |
 | `--username` / `--password` | `None` | `auth-method=credentials` 时必填的账号、密码。 |
 | `--cookie-cache <path>` | `ths_cookie_cache.json` | 覆盖默认的 Cookie 缓存文件路径，缓存有效期 24 小时。 |
 
-> 仅提供 `--username` 而不提供 `--password` 时，CLI 只会尝试读取该账号的缓存，未命中会直接提示补充密码。
-> 这些全局选项可放在任意子命令之前，例如 `python main.py --auth-method credentials --username 13300000000 --password pass list`。
+> 未提供任何认证参数时，CLI 会先尝试复用本地最近一次有效的凭据缓存；若没有命中，再回退到浏览器 Cookie。
+> 仅提供 `--username` 而不提供 `--password` 时，CLI 会按 `credentials` 模式尝试读取该账号的缓存，未命中会直接提示补充密码。
+> 这些全局选项可放在任意子命令之前；如果已提供账号密码，也可以省略 `--auth-method credentials`，例如 `python main.py --username 13300000000 --password pass list`。
 
 ### 1.3 子命令总览
 | 子命令 | 作用 | 关键参数 |
@@ -58,9 +59,10 @@
   ```
 
 ### 1.5 常见场景
-1. **浏览器 Cookie 登录**：保持浏览器已登录同花顺，直接运行 `python main.py list`。
+1. **缓存优先 / 浏览器回退**：直接运行 `python main.py list`，CLI 会先检查本地最近一次有效的凭据缓存；若没有命中，再尝试浏览器 Cookie。
 2. **账号密码登录**：
    ```bash
+   python main.py --username 13300000000 --password pass list
    python main.py --auth-method credentials --username 13300000000 --password pass list
    ```
 3. **批量维护分组**：

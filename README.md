@@ -93,7 +93,7 @@ with PortfolioManager() as portfolio:
 
 #### 命令行基本用法
 
-命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--browser`, `--username`, `--password`, `--cookie-cache`）。常见操作如下：
+命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--browser`, `--username`, `--password`, `--cookie-cache`）。CLI 在未显式指定认证方式时会先看本地 Cookie 缓存：优先复用最近一次有效的账号密码缓存；若没有可用凭据缓存，再回退到浏览器 Cookie。常见操作如下：
 
 ```bash
 # 列出全部分组或查看单个分组
@@ -110,6 +110,7 @@ python main.py group del 消费
 python main.py group share 消费 604800
 
 # 使用账号密码登录再执行命令
+python main.py --username 13300000000 --password yourpass list
 python main.py --auth-method credentials --username 13300000000 --password yourpass list
 ```
 
@@ -140,9 +141,17 @@ portfolio = PortfolioManager(
 
 无论是通过浏览器还是账号密码获取的 Cookie，都会写入 `ths_cookie_cache.json`（或自定义的 `cookie_cache_path`），缓存 24 小时，未过期时优先复用，超时后自动重新获取。
 
-命令行工具也支持同样的参数，例如：
+命令行工具也支持同样的参数：
+
+- 不传认证参数时，CLI 会优先复用本地最近一次有效的凭据缓存；若没有命中，再回退到浏览器 Cookie。
+- 如果提供了 `--username` 或 `--password` 但未显式指定 `--auth-method`，CLI 会自动切换到 `credentials` 模式，并优先读取该账号对应的缓存。
+- 如果显式提供了 `--browser`，CLI 会按该浏览器对应的缓存/浏览器配置处理，不会误用其他账号缓存。
+
+例如：
 
 ```bash
+python main.py list
+python main.py --username <13300000000> --password <yourpass> list
 python main.py --auth-method credentials --username <13300000000> --password <yourpass> list
 ```
 
@@ -212,4 +221,3 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
-
