@@ -107,27 +107,29 @@ class FavoriteAPI:
     def download_self_stocks(
         self,
         *,
-        account: str,
-        password: str,
+        account: Optional[str] = None,
+        password: Optional[str] = None,
         marketcode: str = "1",
-    ) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
+    ) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
         return download_self_stocks(
             self._client.get_cookies(),
-            account=account,
-            password=password,
             marketcode=marketcode,
         )
 
     def upload_self_stocks(
         self,
         *,
-        account: str,
-        password: str,
-        marketcode: str,
-        items: List[Tuple[str, str]],
-    ) -> Dict[str, str]:
+        op: Optional[str] = None,
+        stockcode: Optional[str] = None,
+        account: Optional[str] = None,
+        password: Optional[str] = None,
+        marketcode: str = "1",
+        items: Optional[List[Tuple[str, str]]] = None,
+    ) -> Dict[str, Any]:
         return upload_self_stocks(
             self._client.get_cookies(),
+            op=op,
+            stockcode=stockcode,
             account=account,
             password=password,
             marketcode=marketcode,
