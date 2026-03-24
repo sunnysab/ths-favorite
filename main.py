@@ -204,7 +204,7 @@ def list_groups(manager: PortfolioManager, group_name: Optional[str] = None) -> 
         list_stocks(manager, group_name)
         return
 
-    groups = manager.get_all_groups()
+    groups = manager.get_all_groups(include_self_stocks=True)
     if not groups:
         print("未找到任何分组。")
         return
@@ -219,7 +219,29 @@ def list_groups(manager: PortfolioManager, group_name: Optional[str] = None) -> 
 
 
 def list_stocks(manager: PortfolioManager, group_name: str) -> None:
-    groups = manager.get_all_groups()
+    if group_name == "我的自选":
+        group = manager.get_self_stocks(name=group_name)
+        if not group.items:
+            print(f"分组 '{group_name}' (ID: {group.group_id}) 暂无股票。")
+            return
+
+        rows = []
+        for item in sorted(group.items, key=lambda entry: (entry.code, entry.market or "")):
+            symbol = f"{item.code}.{item.market}" if item.market else item.code
+            rows.append(
+                [
+                    symbol,
+                    item.market or "-",
+                    _format_price(item.price),
+                    _format_added_at(item.added_at),
+                ]
+            )
+
+        print(f"分组 '{group_name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
+        print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
+        return
+
+    groups = manager.get_all_groups(include_self_stocks=True)
     if group_name not in groups:
         print(f"未找到名为 '{group_name}' 的分组")
         return
