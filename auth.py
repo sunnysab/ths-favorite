@@ -13,6 +13,7 @@ Dependencies: ``requests`` and ``cryptography``. Install with
 import base64
 import hashlib
 import json
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Union
@@ -25,6 +26,7 @@ from config import COOKIE_CACHE_FILE, COOKIE_CACHE_TTL_SECONDS
 from cookie import parse_cookie_header, parse_cookie_string
 from exceptions import THSAPIError, THSNetworkError
 from storage import (
+    load_cookie_cache_data,
     read_cached_cookies,
     write_cookie_cache,
 )
@@ -236,7 +238,7 @@ class SessionManager:
 
     def _resolve_from_inputs(self) -> Optional[Dict[str, str]]:
         if self._username is None and self._password is None:
-            return None
+            return self._read_latest_cached_cookies('credentials::')
         return self._resolve_credentials_flow()
 
     def _resolve_credentials_flow(self) -> Optional[Dict[str, str]]:
@@ -282,6 +284,35 @@ class SessionManager:
     def _load_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
         session = self._login_factory(username, password)
         return session.cookies
+
+    def _read_latest_cached_cookies(self, cache_key_prefix: str) -> Optional[Dict[str, str]]:
+        cache_data = load_cookie_cache_data(self._cookie_cache_path)
+        latest_timestamp: Optional[float] = None
+        latest_cookies: Optional[Dict[str, str]] = None
+
+        for cache_key, entry in cache_data.items():
+            if not cache_key.startswith(cache_key_prefix) or not isinstance(entry, dict):
+                continue
+
+            timestamp = entry.get('timestamp')
+            try:
+                timestamp_value = float(timestamp)
+            except (TypeError, ValueError):
+                continue
+
+            if time.time() - timestamp_value > self._cookie_cache_ttl:
+                continue
+
+            cookies_payload = entry.get('cookies')
+            if not isinstance(cookies_payload, dict) or not cookies_payload:
+                continue
+
+            if latest_timestamp is None or timestamp_value > latest_timestamp:
+                latest_timestamp = timestamp_value
+                latest_cookies = {str(k): str(v) for k, v in cookies_payload.items()}
+
+        return latest_cookies
+
     @staticmethod
     def _credentials_cache_key(username: str) -> str:
         digest = hashlib.sha256(username.encode("utf-8")).hexdigest()

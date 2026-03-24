@@ -135,7 +135,7 @@ python main.py --username 13300000000 --password yourpass list
 - 同时提供 `username` 和 `password`：使用账号密码调用官方登录流程获取 Cookie。
 - 仅提供 `username`：尝试读取该账号对应的缓存，未命中即提示补充密码。
 - 提供 `cookies`：直接复用显式传入的 Cookie。
-- 什么都不提供：不自动登录，适合后续通过 `set_cookies()` 注入 Cookie。
+- 什么都不提供：尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录，适合后续通过 `set_cookies()` 注入 Cookie。
 
 示例：
 
@@ -154,7 +154,7 @@ portfolio = PortfolioManager(
 
 - 如果同时提供 `--username` 和 `--password`，CLI 会执行账号密码登录。
 - 如果只提供 `--username`，CLI 会尝试读取该账号对应的缓存。
-- 如果不提供认证参数，CLI 不会自动登录；这适合调用方已手动准备好 Cookie 的场景。
+- 如果不提供认证参数，CLI 会先尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录。
 
 例如：
 

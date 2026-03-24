@@ -15,7 +15,7 @@
 | `--username` / `--password` | `None` | 同时提供时执行账号密码登录；仅提供 `--username` 时尝试读取该账号缓存。 |
 | `--cookie-cache <path>` | `ths_cookie_cache.json` | 覆盖默认的 Cookie 缓存文件路径，缓存有效期 24 小时。 |
 
-> 未提供任何认证参数时，CLI 不会自动尝试浏览器或缓存登录。
+> 未提供任何认证参数时，CLI 会先尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录。
 > 仅提供 `--username` 而不提供 `--password` 时，CLI 会尝试读取该账号的缓存，未命中会直接提示补充密码。
 > 这些全局选项可放在任意子命令之前，例如 `python main.py --username 13300000000 --password pass list`。
 

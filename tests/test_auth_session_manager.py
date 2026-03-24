@@ -13,6 +13,33 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
     def write_cache(self, cache_path: Path, payload):
         cache_path.write_text(json.dumps(payload), encoding="utf-8")
 
+    def test_no_credentials_reuses_latest_cached_cookies(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "cookies.json"
+            now = time.time()
+            self.write_cache(
+                cache_path,
+                {
+                    "credentials::older": {
+                        "timestamp": now - 20,
+                        "cookies": {"sessionid": "old"},
+                    },
+                    "credentials::newer": {
+                        "timestamp": now - 10,
+                        "cookies": {"sessionid": "new"},
+                    },
+                },
+            )
+
+            manager = SessionManager(
+                cookie_cache_path=str(cache_path),
+                cookie_cache_ttl_seconds=10_000,
+            )
+
+            resolved = manager.resolve()
+
+            self.assertEqual(resolved, {"sessionid": "new"})
+
     def test_removed_auth_method_kwarg_is_rejected(self):
         with self.assertRaises(TypeError):
             SessionManager(auth_method="browser")
