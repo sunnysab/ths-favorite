@@ -183,7 +183,9 @@ python main.py group share 消费 604800   # 有效期 7 天
 - 可通过 `get_self_stocks()` 单独获取
 - 也可通过 `get_all_groups(include_self_stocks=True)` 并入全部分组结果
 
-对调用方来说，`stock add/del` 可以直接对 `我的自选` 生效，但其底层协议与普通分组不同，走的是 `my_stock.php` 接口。
+对调用方来说，`stock add/del` 可以直接对 `我的自选` 生效，但其底层协议与普通分组不同，走的是 `https://t.10jqka.com.cn/newcircle/group/...` 接口，并直接复用当前会话的 Cookie。
+
+旧的 `my_stock.php` 相关实现仍保留在仓库中，但仅作为 deprecated 内部兼容代码，不再是主流程。
 
 ### 自选股价格/时间元数据
 
