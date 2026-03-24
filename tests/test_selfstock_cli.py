@@ -44,6 +44,25 @@ class SelfstockCliTest(unittest.TestCase):
 
         manager.get_all_groups.assert_called_once_with(include_self_stocks=True)
 
+    def test_list_groups_renders_aligned_table_with_chinese_content(self):
+        manager = Mock()
+        manager.get_all_groups.return_value = {
+            "我的自选": StockGroup(name="我的自选", group_id="__selfstock__", items=[object()] * 10),
+            "消费": StockGroup(name="消费", group_id="g1", items=[object()] * 3),
+        }
+
+        with patch("main.print") as mock_print:
+            list_groups(manager)
+
+        self.assertEqual(mock_print.call_args_list[0].args[0], "共有 2 个分组:")
+        self.assertEqual(
+            mock_print.call_args_list[1].args[0],
+            "| 分组名称   | 分组ID        |   股票数量 |\n"
+            "|------------|---------------|------------|\n"
+            "| 我的自选   | __selfstock__ |         10 |\n"
+            "| 消费       | g1            |          3 |",
+        )
+
     def test_list_group_selfstock_uses_get_self_stocks(self):
         manager = Mock()
         manager.get_self_stocks.return_value = StockGroup(

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-from tabulate import tabulate
+import tabulate as tabulate_module
 
 from exceptions import THSAPIError, THSNetworkError
 from service import PortfolioManager
@@ -75,6 +75,19 @@ def _format_added_at(raw: Any) -> str:
                 return _format_epoch_timestamp(epoch_value)
 
     return text
+
+
+def _render_table(rows: list[list[Any]], headers: list[str]) -> str:
+    wide_chars_mode = getattr(tabulate_module, "WIDE_CHARS_MODE", None)
+    if wide_chars_mode is None:
+        return tabulate_module.tabulate(rows, headers=headers, tablefmt="github")
+
+    original_mode = wide_chars_mode
+    try:
+        tabulate_module.WIDE_CHARS_MODE = True
+        return tabulate_module.tabulate(rows, headers=headers, tablefmt="github")
+    finally:
+        tabulate_module.WIDE_CHARS_MODE = original_mode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -215,7 +228,7 @@ def list_groups(manager: PortfolioManager, group_name: Optional[str] = None) -> 
         rows.append([name, group.group_id, len(group.items)])
 
     print(f"共有 {len(rows)} 个分组:")
-    print(tabulate(rows, headers=["分组名称", "分组ID", "股票数量"], tablefmt="github"))
+    print(_render_table(rows, headers=["分组名称", "分组ID", "股票数量"]))
 
 
 def list_stocks(manager: PortfolioManager, group_name: str) -> None:
@@ -238,7 +251,7 @@ def list_stocks(manager: PortfolioManager, group_name: str) -> None:
             )
 
         print(f"分组 '{group_name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
-        print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
+        print(_render_table(rows, headers=["代码", "市场", "加入价", "加入时间"]))
         return
 
     groups = manager.get_all_groups(include_self_stocks=True)
@@ -264,7 +277,7 @@ def list_stocks(manager: PortfolioManager, group_name: str) -> None:
         )
 
     print(f"分组 '{group_name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
-    print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
+    print(_render_table(rows, headers=["代码", "市场", "加入价", "加入时间"]))
 
 
 def list_self_stocks(manager: PortfolioManager) -> None:
@@ -286,7 +299,7 @@ def list_self_stocks(manager: PortfolioManager) -> None:
         )
 
     print(f"分组 '{group.name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
-    print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
+    print(_render_table(rows, headers=["代码", "市场", "加入价", "加入时间"]))
 
 
 def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
