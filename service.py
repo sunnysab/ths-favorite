@@ -13,11 +13,19 @@ from config import (
     COOKIE_CACHE_TTL_SECONDS,
     DEFAULT_HEADERS,
     GROUP_CACHE_FILE,
+    SELF_STOCK_CACHE_FILE,
+    SELF_STOCK_DEFAULT_NAME,
+    SELF_STOCK_GROUP_ID,
 )
 from constant import market_abbr, market_code
 from exceptions import THSAPIError, THSNetworkError
 from models import StockGroup, StockItem
-from storage import load_groups_cache, save_groups_cache
+from storage import (
+    load_groups_cache,
+    load_self_stock_cache,
+    save_groups_cache,
+    save_self_stock_cache,
+)
 
 
 class PortfolioManager:
@@ -49,6 +57,8 @@ class PortfolioManager:
         """
         self._group_cache_path: str = GROUP_CACHE_FILE
         self._groups_cache: Dict[str, StockGroup] = load_groups_cache(self._group_cache_path)
+        self._self_stock_cache_path: str = SELF_STOCK_CACHE_FILE
+        self._self_stock_cache: Optional[StockGroup] = load_self_stock_cache(self._self_stock_cache_path)
         self._current_version: Optional[Union[str, int]] = None
         self._selfstock_detail_version: Optional[str] = None
         self._selfstock_detail_map: Dict[Tuple[str, str], Dict[str, Any]] = {}
@@ -84,7 +94,12 @@ class PortfolioManager:
         logger.info("通过 PortfolioManager 设置 API 客户端 cookies...")
         self.api_client.set_cookies(cookies_input)
 
-    def get_all_groups(self, use_cache: bool = False) -> Dict[str, StockGroup]:
+    def get_all_groups(
+        self,
+        use_cache: bool = False,
+        include_self_stocks: bool = False,
+        self_stocks_name: str = SELF_STOCK_DEFAULT_NAME,
+    ) -> Dict[str, StockGroup]:
         logger.info("开始获取所有自选股分组信息...")
         try:
             raw_data = self._api.query_groups()
@@ -118,11 +133,42 @@ class PortfolioManager:
 
         self._groups_cache = formatted
         save_groups_cache(self._group_cache_path, formatted)
+        merged = formatted.copy()
+        if include_self_stocks:
+            self_group = self.get_self_stocks(refresh=False, name=self_stocks_name)
+            merged[self_group.name] = self_group
         logger.info("成功获取并处理了 %d 个分组。", len(formatted))
-        return formatted
+        return merged
+
+    def get_self_stocks(
+        self,
+        refresh: bool = False,
+        name: Optional[str] = None,
+    ) -> StockGroup:
+        group_name = name or SELF_STOCK_DEFAULT_NAME
+        if not refresh and self._self_stock_cache is not None:
+            return StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=list(self._self_stock_cache.items))
+
+        account, password = self._resolve_self_stock_credentials()
+        _, items = self._api.download_self_stocks(account=account, password=password, marketcode="1")
+        parsed_items = [
+            StockItem(code=code, market=market_abbr(market_id))
+            for code, market_id in items
+        ]
+        self._attach_selfstock_metadata(parsed_items)
+        group = StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=parsed_items)
+        self._self_stock_cache = StockGroup(
+            name=SELF_STOCK_DEFAULT_NAME,
+            group_id=SELF_STOCK_GROUP_ID,
+            items=list(parsed_items),
+        )
+        save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
+        return group
 
     def add_item_to_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
         logger.info("尝试添加项目 '%s' 到分组 '%s'...", symbol, group_identifier)
+        if self._is_self_stock_identifier(group_identifier):
+            return self._mutate_self_stock(symbol, action="add")
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("添加股票", f"未能找到分组 '{group_identifier}'")
@@ -140,6 +186,8 @@ class PortfolioManager:
 
     def delete_item_from_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
         logger.info("尝试删除项目 '%s' 从分组 '%s'...", symbol, group_identifier)
+        if self._is_self_stock_identifier(group_identifier):
+            return self._mutate_self_stock(symbol, action="delete")
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("删除股票", f"未能找到分组 '{group_identifier}'")
@@ -286,6 +334,8 @@ class PortfolioManager:
     def close(self) -> None:
         logger.info("准备关闭 PortfolioManager 服务...")
         save_groups_cache(self._group_cache_path, self._groups_cache)
+        if self._self_stock_cache is not None:
+            save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
         if not self._is_external_api_client:
             self.api_client.close()
         logger.info("PortfolioManager 服务已关闭。")
@@ -368,6 +418,10 @@ class PortfolioManager:
 
     def _persist_groups_cache(self) -> None:
         save_groups_cache(self._group_cache_path, self._groups_cache)
+
+    def _persist_self_stock_cache(self) -> None:
+        if self._self_stock_cache is not None:
+            save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
 
     @staticmethod
     def _extract_group_id_from_response(response: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -469,6 +523,55 @@ class PortfolioManager:
     @staticmethod
     def _detail_key(code: str, market_short: Optional[str]) -> Tuple[str, str]:
         return (code, (market_short or "").upper())
+
+    def _resolve_self_stock_credentials(self) -> Tuple[str, str]:
+        cookies = self.api_client.get_cookies()
+        account = cookies.get("escapename") or cookies.get("u_name")
+        password = self._session_manager.get_cached_password()
+        if not account:
+            raise THSAPIError("我的自选", "当前 cookies 中缺少 escapename/u_name")
+        if not password:
+            raise THSAPIError("我的自选", "当前会话缺少 selfstock 所需的明文密码缓存")
+        return account, password
+
+    def _is_self_stock_identifier(self, group_identifier: str) -> bool:
+        if group_identifier == SELF_STOCK_GROUP_ID:
+            return True
+        if group_identifier == SELF_STOCK_DEFAULT_NAME:
+            return True
+        return self._self_stock_cache is not None and group_identifier == self._self_stock_cache.name
+
+    def _mutate_self_stock(self, symbol: str, *, action: str) -> Dict[str, Any]:
+        current_group = self.get_self_stocks(refresh=False)
+        item_code, api_item_type = self._parse_symbol(symbol)
+        updated_items = list(current_group.items)
+        target_item = StockItem(code=item_code, market=market_abbr(api_item_type))
+        if action == "add":
+            if target_item not in updated_items:
+                updated_items.append(target_item)
+        elif action == "delete":
+            updated_items = [item for item in updated_items if item != target_item]
+        else:
+            raise THSAPIError("我的自选", f"未知操作: {action}")
+
+        account, password = self._resolve_self_stock_credentials()
+        payload_items = [
+            (item.code, market_code(item.market or ""))
+            for item in updated_items
+        ]
+        result = self._api.upload_self_stocks(
+            account=account,
+            password=password,
+            marketcode="1",
+            items=payload_items,
+        )
+        self._self_stock_cache = StockGroup(
+            name=SELF_STOCK_DEFAULT_NAME,
+            group_id=SELF_STOCK_GROUP_ID,
+            items=updated_items,
+        )
+        self._persist_self_stock_cache()
+        return result
 
 
 __all__ = ["PortfolioManager"]

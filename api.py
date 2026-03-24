@@ -101,6 +101,36 @@ class FavoriteAPI:
         response = self._client.post_form_json(ENDPOINTS["share_group"], data=share_payload)
         return self._extract_data(response, "分享分组")
 
+    def download_self_stocks(
+        self,
+        *,
+        account: str,
+        password: str,
+        marketcode: str = "1",
+    ) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
+        return download_self_stocks(
+            self._client.get_cookies(),
+            account=account,
+            password=password,
+            marketcode=marketcode,
+        )
+
+    def upload_self_stocks(
+        self,
+        *,
+        account: str,
+        password: str,
+        marketcode: str,
+        items: List[Tuple[str, str]],
+    ) -> Dict[str, str]:
+        return upload_self_stocks(
+            self._client.get_cookies(),
+            account=account,
+            password=password,
+            marketcode=marketcode,
+            items=items,
+        )
+
     def _post_with_version(
         self,
         endpoint: str,
@@ -218,11 +248,11 @@ def _encode_self_stock_request_payload(**fields: str) -> str:
 def download_self_stocks(
     cookies: Dict[str, str],
     *,
+    account: str,
+    password: str,
+    marketcode: str = "1",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
-    account = cookies.get("escapename") or cookies.get("u_name")
-    if not account:
-        raise THSAPIError("我的自选", "cookies 中缺少 escapename/u_name")
     response = requests.post(
         SELF_STOCK_API_URL,
         data={
@@ -230,8 +260,8 @@ def download_self_stocks(
                 account=account,
                 do="get",
                 expand="1",
-                marketcode="1",
-                passwd="@sab098.ths",
+                marketcode=marketcode,
+                passwd=password,
                 selfcode_crc=" ",
             )
         },
