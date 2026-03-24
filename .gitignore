@@ -122,3 +122,4 @@ dmypy.json
 # Project specific
 favorite.json
 *.json
+.worktrees/
