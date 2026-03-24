@@ -13,7 +13,6 @@ Dependencies: ``requests`` and ``cryptography``. Install with
 import base64
 import hashlib
 import json
-import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Union
@@ -23,10 +22,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from config import COOKIE_CACHE_FILE, COOKIE_CACHE_TTL_SECONDS
-from cookie import load_browser_cookie, parse_cookie_header, parse_cookie_string
+from cookie import parse_cookie_header, parse_cookie_string
 from exceptions import THSAPIError, THSNetworkError
 from storage import (
-    load_cookie_cache_data,
     read_cached_cookies,
     write_cookie_cache,
 )
@@ -215,8 +213,7 @@ class SessionManager:
         self,
         *,
         cookies: Optional[Union[Dict[str, str], str]] = None,
-        auth_method: str = "browser",
-        browser_name: str = "firefox",
+        auth_method: str = "none",
         username: Optional[str] = None,
         password: Optional[str] = None,
         cookie_cache_path: Optional[str] = None,
@@ -224,8 +221,7 @@ class SessionManager:
         login_factory: Optional[Callable[[str, str], SessionResult]] = None,
     ) -> None:
         self._explicit_cookies = self._normalize_cookies(cookies)
-        self._auth_method = (auth_method or "browser").lower()
-        self._browser_name = browser_name
+        self._auth_method = (auth_method or "none").lower()
         self._username = username
         self._password = password
         self._cookie_cache_path = cookie_cache_path or COOKIE_CACHE_FILE
@@ -242,57 +238,14 @@ class SessionManager:
         return self._resolved_cache.copy() if self._resolved_cache else None
 
     def get_cached_password(self) -> Optional[str]:
-        if self._resolved_password:
-            return self._resolved_password
-        cache_data = load_cookie_cache_data(self._cookie_cache_path)
-        if self._auth_method in {"credentials", "login"} and self._username:
-            entry = cache_data.get(self._credentials_cache_key(self._username))
-            if isinstance(entry, dict):
-                password = entry.get("password")
-                if password:
-                    self._resolved_password = str(password)
-                    return self._resolved_password
-        if self._auth_method == "auto":
-            latest_password: Optional[str] = None
-            latest_timestamp: Optional[float] = None
-            for cache_key, entry in cache_data.items():
-                if not cache_key.startswith("credentials::") or not isinstance(entry, dict):
-                    continue
-                password = entry.get("password")
-                timestamp = entry.get("timestamp")
-                try:
-                    timestamp_value = float(timestamp)
-                except (TypeError, ValueError):
-                    continue
-                if time.time() - timestamp_value > self._cookie_cache_ttl:
-                    continue
-                if password and (latest_timestamp is None or timestamp_value > latest_timestamp):
-                    latest_timestamp = timestamp_value
-                    latest_password = str(password)
-            if latest_password:
-                self._resolved_password = latest_password
-                return self._resolved_password
-        return None
+        return self._resolved_password
 
     def _resolve_from_strategy(self) -> Optional[Dict[str, str]]:
         if self._auth_method in {"none", "skip"}:
             return None
-        if self._auth_method == "auto":
-            return self._resolve_auto_flow()
-        if self._auth_method == "browser":
-            cache_key = self._browser_cache_key(self._browser_name)
-            return self._fetch_with_cache(cache_key, lambda: self._load_from_browser(self._browser_name))
         if self._auth_method in {"credentials", "login"}:
             return self._resolve_credentials_flow()
         raise ValueError(f"未知的 auth_method: {self._auth_method}")
-
-    def _resolve_auto_flow(self) -> Optional[Dict[str, str]]:
-        latest_credentials = self._read_latest_cached_cookies("credentials::")
-        if latest_credentials:
-            return latest_credentials
-
-        cache_key = self._browser_cache_key(self._browser_name)
-        return self._fetch_with_cache(cache_key, lambda: self._load_from_browser(self._browser_name))
 
     def _resolve_credentials_flow(self) -> Optional[Dict[str, str]]:
         if self._username and self._password:
@@ -331,61 +284,14 @@ class SessionManager:
             return cached
         fresh = loader()
         if fresh:
-            extra_fields: Optional[Dict[str, str]] = None
             if cache_key.startswith("credentials::") and self._password:
-                extra_fields = {"password": self._password}
                 self._resolved_password = self._password
-            write_cookie_cache(self._cookie_cache_path, cache_key, fresh, extra_fields=extra_fields)
+            write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
         return fresh
-
-    def _read_latest_cached_cookies(self, cache_key_prefix: str) -> Optional[Dict[str, str]]:
-        cache_data = load_cookie_cache_data(self._cookie_cache_path)
-        latest_timestamp: Optional[float] = None
-        latest_cookies: Optional[Dict[str, str]] = None
-
-        for cache_key, entry in cache_data.items():
-            if not cache_key.startswith(cache_key_prefix) or not isinstance(entry, dict):
-                continue
-
-            timestamp = entry.get("timestamp")
-            try:
-                timestamp_value = float(timestamp)
-            except (TypeError, ValueError):
-                continue
-
-            if time.time() - timestamp_value > self._cookie_cache_ttl:
-                continue
-
-            cookies_payload = entry.get("cookies")
-            if not isinstance(cookies_payload, dict) or not cookies_payload:
-                continue
-
-            if latest_timestamp is None or timestamp_value > latest_timestamp:
-                latest_timestamp = timestamp_value
-                latest_cookies = {str(k): str(v) for k, v in cookies_payload.items()}
-
-        return latest_cookies
-
-    def _load_from_browser(self, browser_name: str) -> Optional[Dict[str, str]]:
-        cookies_raw = load_browser_cookie(browser_name)
-        cookie_dict: Dict[str, str] = {}
-        for cookie in cookies_raw:
-            name = getattr(cookie, "name", None)
-            value = getattr(cookie, "value", None)
-            if name and value is not None:
-                cookie_dict[str(name)] = str(value)
-        return cookie_dict or None
 
     def _load_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
         session = self._login_factory(username, password)
         return session.cookies
-
-
-    @staticmethod
-    def _browser_cache_key(browser_name: str) -> str:
-        normalized = (browser_name or "default").lower()
-        return f"browser::{normalized}"
-
     @staticmethod
     def _credentials_cache_key(username: str) -> str:
         digest = hashlib.sha256(username.encode("utf-8")).hexdigest()

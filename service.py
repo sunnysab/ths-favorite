@@ -36,8 +36,7 @@ class PortfolioManager:
         cookies: Union[str, Dict[str, str], None] = None,
         api_client: Optional[ApiClient] = None,
         *,
-        auth_method: str = "browser",
-        browser_name: str = "firefox",
+        auth_method: str = "none",
         username: Optional[str] = None,
         password: Optional[str] = None,
         cookie_cache_path: Optional[str] = None,
@@ -48,8 +47,7 @@ class PortfolioManager:
         Args:
             cookies: Optional raw cookie string or dict to bypass authentication.
             api_client: Custom ApiClient instance for advanced integrations.
-            auth_method: How to acquire cookies (`browser`, `credentials`, or `none`).
-            browser_name: Browser to read cookies from when auth_method="browser".
+            auth_method: How to acquire cookies (`credentials` or `none`).
             username: Account username when using credential authentication.
             password: Account password when using credential authentication.
             cookie_cache_path: Override path for cached cookies.
@@ -67,7 +65,6 @@ class PortfolioManager:
         self._session_manager = SessionManager(
             cookies=cookies,
             auth_method=auth_method,
-            browser_name=browser_name,
             username=username,
             password=password,
             cookie_cache_path=cookie_cache_path or COOKIE_CACHE_FILE,

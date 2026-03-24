@@ -24,9 +24,6 @@ cli = [
     "tabulate",
     "wcwidth",
 ]
-browser = [
-    "browser-cookie3"
-]
 
 [dependency-groups]
 dev = [

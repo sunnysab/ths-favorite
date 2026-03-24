@@ -13,7 +13,11 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
     def write_cache(self, cache_path: Path, payload):
         cache_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    def test_auto_mode_prefers_latest_credentials_cache_without_loading_browser(self):
+    def test_browser_auth_method_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "未知的 auth_method"):
+            SessionManager(auth_method="browser").resolve()
+
+    def test_credentials_mode_reads_matching_cached_cookies_without_browser_fallback(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "cookies.json"
             now = time.time()
@@ -28,40 +32,24 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
                         "timestamp": now - 10,
                         "cookies": {"sessionid": "new"},
                     },
-                    "browser::firefox": {
-                        "timestamp": now - 5,
-                        "cookies": {"sessionid": "browser"},
-                    },
                 },
             )
 
+            target_key = SessionManager._credentials_cache_key("target")
+            cache_data = load_cookie_cache_data(str(cache_path))
+            cache_data[target_key] = cache_data.pop("credentials::newer")
+            self.write_cache(cache_path, cache_data)
+
             manager = SessionManager(
-                auth_method="auto",
+                auth_method="credentials",
+                username="target",
                 cookie_cache_path=str(cache_path),
                 cookie_cache_ttl_seconds=10_000,
             )
-            manager._load_from_browser = Mock(side_effect=AssertionError("browser loader should not run"))
 
             resolved = manager.resolve()
 
             self.assertEqual(resolved, {"sessionid": "new"})
-
-    def test_auto_mode_falls_back_to_browser_when_no_credentials_cache_exists(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_path = Path(tmpdir) / "cookies.json"
-            browser_loader = Mock(return_value={"sessionid": "browser-live"})
-
-            manager = SessionManager(
-                auth_method="auto",
-                cookie_cache_path=str(cache_path),
-                cookie_cache_ttl_seconds=10_000,
-            )
-            manager._load_from_browser = browser_loader
-
-            resolved = manager.resolve()
-
-            self.assertEqual(resolved, {"sessionid": "browser-live"})
-            browser_loader.assert_called_once_with("firefox")
 
     def test_credentials_mode_ignores_other_accounts_cache_and_uses_requested_account(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -11,10 +11,10 @@ def parse_args(argv):
 
 
 class MainCliAuthDefaultsTest(unittest.TestCase):
-    def test_defaults_to_auto_auth_when_no_auth_flags_are_provided(self):
+    def test_defaults_to_none_auth_when_no_auth_flags_are_provided(self):
         args = parse_args(["list"])
 
-        self.assertEqual(args.auth_method, "auto")
+        self.assertEqual(args.auth_method, "none")
 
     def test_infers_credentials_auth_when_username_and_password_are_provided_after_subcommand(self):
         args = parse_args(["list", "--username", "user", "--password", "secret"])
@@ -26,17 +26,17 @@ class MainCliAuthDefaultsTest(unittest.TestCase):
 
         self.assertEqual(args.auth_method, "credentials")
 
-    def test_keeps_explicit_browser_auth_when_requested(self):
-        args = parse_args(
-            ["--auth-method", "browser", "list", "--username", "user", "--password", "secret"]
-        )
+    def test_rejects_browser_auth_method(self):
+        parser = build_parser()
 
-        self.assertEqual(args.auth_method, "browser")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--auth-method", "browser", "list"])
 
-    def test_infers_browser_auth_when_browser_flag_is_provided(self):
-        args = parse_args(["list", "--browser", "chrome"])
+    def test_rejects_browser_flag(self):
+        parser = build_parser()
 
-        self.assertEqual(args.auth_method, "browser")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["list", "--browser", "chrome"])
 
 
 if __name__ == "__main__":

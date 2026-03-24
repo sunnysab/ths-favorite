@@ -112,14 +112,9 @@ def build_parser() -> argparse.ArgumentParser:
     global_parser = argparse.ArgumentParser(add_help=False)
     global_parser.add_argument(
         "--auth-method",
-        choices=["browser", "credentials", "none"],
+        choices=["credentials", "none"],
         default=argparse.SUPPRESS,
         help="选择获取 cookies 的方式",
-    )
-    global_parser.add_argument(
-        "--browser",
-        default=argparse.SUPPRESS,
-        help="当 auth-method=browser 时指定浏览器名称",
     )
     global_parser.add_argument("--username", default=argparse.SUPPRESS, help="当 auth-method=credentials 时使用的账号")
     global_parser.add_argument("--password", default=argparse.SUPPRESS, help="当 auth-method=credentials 时使用的密码")
@@ -211,16 +206,12 @@ def build_parser() -> argparse.ArgumentParser:
 def apply_global_defaults(args: argparse.Namespace) -> None:
     if not hasattr(args, "auth_method"):
         has_explicit_credentials = bool(getattr(args, "username", None) or getattr(args, "password", None))
-        has_explicit_browser = hasattr(args, "browser")
         if has_explicit_credentials:
             args.auth_method = "credentials"
-        elif has_explicit_browser:
-            args.auth_method = "browser"
         else:
-            args.auth_method = "auto"
+            args.auth_method = "none"
 
     defaults = {
-        "browser": "firefox",
         "username": None,
         "password": None,
         "cookie_cache": None,
@@ -357,7 +348,6 @@ def handle_self_command(manager: PortfolioManager, args: argparse.Namespace) -> 
 def execute(args: argparse.Namespace) -> None:
     manager_kwargs = {
         "auth_method": args.auth_method,
-        "browser_name": args.browser,
         "username": args.username,
         "password": args.password,
         "cookie_cache_path": args.cookie_cache,
