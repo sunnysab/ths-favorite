@@ -11,6 +11,7 @@ DEFAULT_HEADERS: Dict[str, str] = {
 }
 
 API_BASE_URL: str = "https://ugc.10jqka.com.cn"
+SELF_STOCK_API_URL: str = "https://selfstock.10jqka.com.cn/my_stock.php"
 
 ENDPOINTS = {
     "query_groups": "/optdata/selfgroup/open/api/group/v1/query",
@@ -22,9 +23,16 @@ ENDPOINTS = {
 }
 
 GROUP_CACHE_FILE: str = "ths_favorite_cache.json"
+SELF_STOCK_CACHE_FILE: str = "ths_self_stock_cache.json"
 COOKIE_CACHE_FILE: str = "ths_cookie_cache.json"
 COOKIE_CACHE_TTL_SECONDS: int = 24 * 60 * 60
+SELF_STOCK_GROUP_ID: str = "__selfstock__"
+SELF_STOCK_DEFAULT_NAME: str = "我的自选"
 
 DEFAULT_FROM_PARAM: str = "sjcg_gphone"
 GROUP_QUERY_TYPES: str = "0,1"
 DEFAULT_HTTP_TIMEOUT: float = 10.0
+SELF_STOCK_HTTP_TIMEOUT: float = 10.0
+HEXIN_SPECIAL_BASE64_EX_ALPHABET: str = (
+    "oPbsG4EvU8gyd02B3q6fIVWXYZaCcMeTKhxnwzmjApRrDtuHkiLlN1O9F5S7JQ+/"
+)
