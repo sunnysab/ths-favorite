@@ -12,8 +12,6 @@ from config import (
     DEFAULT_HEADERS,
     ENDPOINTS,
     GROUP_QUERY_TYPES,
-    HEXIN_SPECIAL_BASE64_EX_ALPHABET,
-    SELF_STOCK_API_URL,
     SELF_STOCK_HTTP_TIMEOUT,
     SELF_STOCK_V2_BASE_URL,
     SELF_STOCK_V2_LIST_PATH,
@@ -24,7 +22,6 @@ from utils import parse_ths_xml_response
 
 SELFSTOCK_DETAIL_API_URL = "https://ugc.10jqka.com.cn/selfstock_detail"
 SELFSTOCK_DETAIL_TIMEOUT = 10.0
-STANDARD_BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 
 
 class FavoriteAPI:
@@ -106,34 +103,19 @@ class FavoriteAPI:
 
     def download_self_stocks(
         self,
-        *,
-        account: Optional[str] = None,
-        password: Optional[str] = None,
-        marketcode: str = "1",
     ) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
-        return download_self_stocks(
-            self._client.get_cookies(),
-            marketcode=marketcode,
-        )
+        return download_self_stocks(self._client.get_cookies())
 
     def upload_self_stocks(
         self,
         *,
-        op: Optional[str] = None,
-        stockcode: Optional[str] = None,
-        account: Optional[str] = None,
-        password: Optional[str] = None,
-        marketcode: str = "1",
-        items: Optional[List[Tuple[str, str]]] = None,
+        op: str,
+        stockcode: str,
     ) -> Dict[str, Any]:
         return upload_self_stocks(
             self._client.get_cookies(),
             op=op,
             stockcode=stockcode,
-            account=account,
-            password=password,
-            marketcode=marketcode,
-            items=items,
         )
 
     def _post_with_version(
@@ -212,44 +194,6 @@ def _decode_detail_blob(detail_blob: str) -> List[Dict[str, Any]]:
     return json.loads(decoded_str)
 
 
-def _decode_hexin_special_base64_ex(blob: str) -> bytes:
-    translated = blob.translate(str.maketrans(HEXIN_SPECIAL_BASE64_EX_ALPHABET, STANDARD_BASE64_ALPHABET))
-    return base64.b64decode(translated)
-
-
-def _decode_self_stock_response_text(blob: str) -> Dict[str, str]:
-    raw_bytes = _decode_hexin_special_base64_ex(blob)
-    decoded_text = raw_bytes.decode("gbk").strip()
-    result: Dict[str, str] = {}
-    for index, part in enumerate(decoded_text.split("&")):
-        if not part:
-            continue
-        if index == 0 and part.startswith("<meta "):
-            part = part[len("<meta ") :]
-        if "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        result[key.strip()] = value
-    return result
-
-
-def _parse_self_stock_items(payload: str, expected_num: int) -> List[Tuple[str, str]]:
-    if "," not in payload:
-        raise THSAPIError("我的自选", "SelfStock 字段缺少市场码段")
-    codes_blob, markets_blob = payload.split(",", 1)
-    codes = [code for code in codes_blob.split("|") if code]
-    markets = [market for market in markets_blob.split("|") if market]
-    if len(codes) != len(markets) or len(codes) != expected_num:
-        raise THSAPIError("我的自选", "SelfStock 条目数与 num 不一致")
-    return list(zip(codes, markets))
-
-
-def _encode_self_stock_request_payload(**fields: str) -> str:
-    plain_text = "&".join(f"{key}={value}" for key, value in fields.items())
-    encoded = base64.b64encode(plain_text.encode("gbk")).decode("ascii")
-    return encoded.translate(str.maketrans(STANDARD_BASE64_ALPHABET, HEXIN_SPECIAL_BASE64_EX_ALPHABET))
-
-
 def _extract_self_stock_v2_result(payload: Any, action_name: str) -> Any:
     if not isinstance(payload, dict):
         raise THSAPIError(action_name, "响应格式无效")
@@ -310,94 +254,9 @@ def modify_self_stock_v2(
     _extract_self_stock_v2_result(payload, "我的自选")
     return payload
 
-
-def download_self_stocks_old(
-    cookies: Dict[str, str],
-    *,
-    account: str,
-    password: str,
-    marketcode: str = "1",
-    timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Tuple[Dict[str, str], List[Tuple[str, str]]]:
-    """Deprecated: old my_stock.php selfstock protocol."""
-    response = requests.post(
-        SELF_STOCK_API_URL,
-        data={
-            "param": _encode_self_stock_request_payload(
-                account=account,
-                do="get",
-                expand="1",
-                marketcode=marketcode,
-                passwd=password,
-                selfcode_crc=" ",
-            )
-        },
-        headers={
-            "User-Agent": "HEVO",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        cookies=cookies,
-        timeout=timeout,
-    )
-    try:
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise THSNetworkError("我的自选", str(exc)) from exc
-    meta = _decode_self_stock_response_text(response.text.strip())
-    retcode = meta.get("retcode")
-    if retcode != "0":
-        raise THSAPIError("我的自选", meta.get("ReturnMsg", "未知业务错误"), retcode)
-    num_text = meta.get("num")
-    self_stock = meta.get("SelfStock")
-    if num_text is None or self_stock is None:
-        raise THSAPIError("我的自选", "响应缺少 num 或 SelfStock 字段")
-    items = _parse_self_stock_items(self_stock, int(num_text))
-    return meta, items
-
-
-def upload_self_stocks_old(
-    cookies: Dict[str, str],
-    *,
-    account: str,
-    password: str,
-    marketcode: str,
-    items: List[Tuple[str, str]],
-    timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, str]:
-    codes_blob = "|".join(code for code, _ in items)
-    markets_blob = "|".join(market for _, market in items)
-    payload = _encode_self_stock_request_payload(
-        account=account,
-        do="put",
-        expand="1",
-        marketcode=marketcode,
-        passwd=password,
-        selfcode_crc=" ",
-        SelfStock=f"{codes_blob}|,{markets_blob}|",
-    )
-    try:
-        response = requests.post(
-            SELF_STOCK_API_URL,
-            data={"param": payload},
-            headers={
-                "User-Agent": "HEVO",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            cookies=cookies,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-    except requests.RequestException as exc:
-        raise THSNetworkError("我的自选", str(exc)) from exc
-    return _decode_self_stock_response_text(response.text.strip())
-
-
 def download_self_stocks(
     cookies: Dict[str, str],
     *,
-    account: Optional[str] = None,
-    password: Optional[str] = None,
-    marketcode: str = "1",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
     return download_self_stocks_v2(cookies, timeout=timeout)
@@ -408,21 +267,8 @@ def upload_self_stocks(
     *,
     op: Optional[str] = None,
     stockcode: Optional[str] = None,
-    account: Optional[str] = None,
-    password: Optional[str] = None,
-    marketcode: str = "1",
-    items: Optional[List[Tuple[str, str]]] = None,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> Dict[str, Any]:
     if op is not None and stockcode is not None:
         return modify_self_stock_v2(cookies, op=op, stockcode=stockcode, timeout=timeout)
-    if account is None or password is None or items is None:
-        raise THSAPIError("我的自选", "缺少新旧协议所需参数")
-    return upload_self_stocks_old(
-        cookies,
-        account=account,
-        password=password,
-        marketcode=marketcode,
-        items=items,
-        timeout=timeout,
-    )
+    raise THSAPIError("我的自选", "仅支持基于 cookies 的新版自选接口，请提供 op 和 stockcode")

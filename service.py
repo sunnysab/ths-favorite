@@ -520,17 +520,6 @@ class PortfolioManager:
     def _detail_key(code: str, market_short: Optional[str]) -> Tuple[str, str]:
         return (code, (market_short or "").upper())
 
-    def _resolve_self_stock_credentials(self) -> Tuple[str, str]:
-        """Deprecated: old my_stock.php selfstock protocol."""
-        cookies = self.api_client.get_cookies()
-        account = cookies.get("escapename") or cookies.get("u_name")
-        password = self._session_manager.get_cached_password()
-        if not account:
-            raise THSAPIError("我的自选", "当前 cookies 中缺少 escapename/u_name")
-        if not password:
-            raise THSAPIError("我的自选", "当前会话缺少 selfstock 所需的明文密码缓存")
-        return account, password
-
     def _is_self_stock_identifier(self, group_identifier: str) -> bool:
         if group_identifier == SELF_STOCK_GROUP_ID:
             return True

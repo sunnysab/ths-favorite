@@ -14,8 +14,6 @@ API_BASE_URL: str = "https://ugc.10jqka.com.cn"
 SELF_STOCK_V2_BASE_URL: str = "https://t.10jqka.com.cn"
 SELF_STOCK_V2_LIST_PATH: str = "/newcircle/group/getSelfStockWithMarket/"
 SELF_STOCK_V2_MODIFY_PATH: str = "/newcircle/group/modifySelfStock/"
-# Deprecated: old my_stock.php selfstock protocol.
-SELF_STOCK_API_URL: str = "http://selfstock.10jqka.com.cn/my_stock.php"
 
 ENDPOINTS = {
     "query_groups": "/optdata/selfgroup/open/api/group/v1/query",
@@ -37,6 +35,3 @@ DEFAULT_FROM_PARAM: str = "sjcg_gphone"
 GROUP_QUERY_TYPES: str = "0,1"
 DEFAULT_HTTP_TIMEOUT: float = 10.0
 SELF_STOCK_HTTP_TIMEOUT: float = 10.0
-HEXIN_SPECIAL_BASE64_EX_ALPHABET: str = (
-    "oPbsG4EvU8gyd02B3q6fIVWXYZaCcMeTKhxnwzmjApRrDtuHkiLlN1O9F5S7JQ+/"
-)

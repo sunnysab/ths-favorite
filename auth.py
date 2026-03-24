@@ -228,7 +228,6 @@ class SessionManager:
         self._cookie_cache_ttl = cookie_cache_ttl_seconds
         self._login_factory = login_factory or create_session
         self._resolved_cache: Optional[Dict[str, str]] = None
-        self._resolved_password: Optional[str] = password
 
     def resolve(self) -> Optional[Dict[str, str]]:
         if self._explicit_cookies is not None:
@@ -236,9 +235,6 @@ class SessionManager:
         if self._resolved_cache is None:
             self._resolved_cache = self._resolve_from_strategy()
         return self._resolved_cache.copy() if self._resolved_cache else None
-
-    def get_cached_password(self) -> Optional[str]:
-        return self._resolved_password
 
     def _resolve_from_strategy(self) -> Optional[Dict[str, str]]:
         if self._auth_method in {"none", "skip"}:
@@ -284,8 +280,6 @@ class SessionManager:
             return cached
         fresh = loader()
         if fresh:
-            if cache_key.startswith("credentials::") and self._password:
-                self._resolved_password = self._password
             write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
         return fresh
 

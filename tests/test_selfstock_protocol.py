@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from api import download_self_stocks, modify_self_stock_v2
+from api import download_self_stocks, modify_self_stock_v2, upload_self_stocks
 from exceptions import THSAPIError, THSNetworkError
 
 
@@ -67,6 +67,15 @@ class SelfstockProtocolTest(unittest.TestCase):
     def test_modify_self_stock_v2_raises_network_error(self, _mock_get):
         with self.assertRaises(THSNetworkError):
             modify_self_stock_v2({"userid": "1"}, op="del", stockcode="300830_33")
+
+    def test_upload_self_stocks_no_longer_accepts_legacy_plaintext_protocol_arguments(self):
+        with self.assertRaises(TypeError):
+            upload_self_stocks(
+                {"userid": "1"},
+                account="user",
+                password="secret",
+                items=[("600366", "17")],
+            )
 
 
 if __name__ == "__main__":
