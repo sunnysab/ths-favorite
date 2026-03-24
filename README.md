@@ -43,9 +43,97 @@ pip install -e '.[cli]'
 pip install 'ths-favorite[cli]'
 ```
 
+## 快速开始
+
+### 1. 首次使用 CLI
+
+首次运行时，推荐显式提供账号密码登录：
+
+```bash
+python main.py --username 13300000000 --password yourpass list
+```
+
+登录成功后，会把当前会话 Cookie 缓存到本地，后续可直接复用。
+
+### 2. 后续复用缓存
+
+如果本地已有未过期的凭据缓存，可以直接运行：
+
+```bash
+python main.py list
+python main.py self list
+python main.py list -g 消费
+```
+
+如果缓存失效或本地没有缓存，CLI 会以未登录态启动；此时请重新提供 `--username` / `--password`。
+
+### 3. Python API
+
+使用账号密码登录：
+
+```python
+from service import PortfolioManager
+
+with PortfolioManager(
+    username='your_account',
+    password='your_password',
+) as portfolio:
+    groups = portfolio.get_all_groups()
+    self_group = portfolio.get_self_stocks()
+    print(len(groups), len(self_group.items))
+```
+
+显式注入 Cookie：
+
+```python
+from service import PortfolioManager
+
+with PortfolioManager(cookies='userid=...; sessionid=...') as portfolio:
+    groups = portfolio.get_all_groups()
+    print(groups.keys())
+```
+
+## 常用命令
+
+```bash
+# 查看分组
+python main.py list
+python main.py list -g 消费
+python main.py self list
+
+# 添加 / 删除股票
+python main.py stock add 消费 600519.SH
+python main.py stock del 消费 600519.SH
+python main.py stock add 我的自选 600519.SH
+python main.py stock del 我的自选 600519.SH
+
+# 分组管理
+python main.py group add "长线跟踪"
+python main.py group del 消费
+python main.py group share 消费 604800
+```
+
+更完整的 CLI / API 参数说明、命令矩阵和场景示例见 [使用指南](TUTORIAL.md)。
+
+## 认证与缓存
+
+`PortfolioManager` 会按传入参数自动决定是否登录：
+
+- 同时提供 `username` 和 `password`：使用账号密码调用官方登录流程获取 Cookie。
+- 仅提供 `username`：尝试读取该账号对应的缓存，未命中即提示补充密码。
+- 提供 `cookies`：直接复用显式传入的 Cookie。
+- 什么都不提供：尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录。
+
+Cookie 缓存行为如下：
+
+- 缓存文件默认是 `ths_cookie_cache.json`，可通过 `cookie_cache_path` 或 `--cookie-cache` 覆盖。
+- 缓存有效期默认 24 小时。
+- 缓存中仅保存 Cookie 和时间戳，不再落盘明文密码。
+- 分组数据会缓存到 `ths_favorite_cache.json`，“我的自选”会缓存到 `ths_self_stock_cache.json`。
+
 ## 配置
 
-所有常量（User-Agent、缓存文件路径、API URL 等）均集中在 `config.py` 中。作为库使用时，推荐直接修改该文件或在运行前以 `import config` 的方式动态覆盖对应常量：
+所有常量（User-Agent、缓存文件路径、API URL 等）均集中在 `config.py` 中。作为库使用时，优先推荐在应用启动时以 `import config` 的方式动态覆盖对应常量，而不是直接修改包内文件：
 
 ```python
 import config
@@ -53,123 +141,7 @@ config.DEFAULT_HEADERS["User-Agent"] = "MyCustomUA/1.0"
 config.COOKIE_CACHE_FILE = "/tmp/ths_cookies.json"
 ```
 
-调整配置时只需修改 `config.py` 或在应用启动阶段覆写上述常量即可。
-
-## 使用示例
-
-### 基本用法
-
-```python
-from service import PortfolioManager
-
-# 创建实例，使用账号密码登录
-with PortfolioManager(
-    username="your_account",
-    password="your_password",
-) as portfolio:
-    self_group = portfolio.get_self_stocks()
-    print(f"分组: {self_group.name}, ID: {self_group.group_id}")
-    print(f"包含 {len(self_group.items)} 个股票")
-
-    # 获取所有分组
-    groups = portfolio.get_all_groups()
-
-    # 也可以把“我的自选”并入分组结果
-    groups_with_self = portfolio.get_all_groups(include_self_stocks=True)
-    
-    # 查看分组内容并打印加入价/时间（来自 selfstock_detail）
-    for name, group in groups.items():
-        print(f"分组: {name}, ID: {group.group_id}")
-        print(f"包含 {len(group.items)} 个股票")
-        for item in group.items:
-            line = f"- {item.code}.{item.market or ''}"
-            if item.price is not None:
-                line += f" @ {item.price}"
-            if item.added_at:
-                line += f" (added {item.added_at})"
-            print(line)
-    
-    # 添加股票到分组中 (使用分组名称)
-    portfolio.add_item_to_group("消费", "600519.SH")  # 添加贵州茅台
-    
-    # 也可以使用分组ID添加
-    portfolio.add_item_to_group("0_35", "000858.SZ")  # 添加五粮液到消费分组
-    
-    # 从分组删除股票
-    portfolio.delete_item_from_group("消费", "600519.SH")
-```
-
-#### 命令行基本用法
-
-> CLI 依赖不属于基础安装。如需运行 `python main.py ...`，请先安装 `cli` 可选依赖。
-
-命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--username`, `--password`, `--cookie-cache`）。CLI 不再提供浏览器 Cookie 提取；如需访问远端接口，请显式提供账号密码，或在 Python API 中通过 `cookies=` / `set_cookies()` 注入现成 Cookie。常见操作如下：
-
-```bash
-# 列出全部分组或查看单个分组
-python main.py list
-python main.py list -g 消费          # 使用 -g 查看指定分组
-python main.py self list            # 查看“我的自选”
-
-# 添加 / 删除股票（代码格式为 CODE.MARKET）
-python main.py stock add 消费 600519.SH
-python main.py stock del 消费 600519.SH
-python main.py stock add 我的自选 600519.SH
-python main.py stock del 我的自选 600519.SH
-
-# 管理和分享分组
-python main.py group add "长线跟踪"
-python main.py group del 消费
-python main.py group share 消费 604800
-
-# 使用账号密码登录再执行命令
-python main.py --username 13300000000 --password yourpass list
-```
-
-详细 CLI 与 API 说明请参见 [使用指南](TUTORIAL.md)。
-
-## Cookie 获取与缓存
-
-`PortfolioManager` 会按传入参数自动决定是否登录：
-
-- 同时提供 `username` 和 `password`：使用账号密码调用官方登录流程获取 Cookie。
-- 仅提供 `username`：尝试读取该账号对应的缓存，未命中即提示补充密码。
-- 提供 `cookies`：直接复用显式传入的 Cookie。
-- 什么都不提供：尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录，适合后续通过 `set_cookies()` 注入 Cookie。
-
-示例：
-
-```python
-# 使用账号密码登录，并自定义缓存文件位置
-portfolio = PortfolioManager(
-    username="your_account",
-    password="your_password",
-    cookie_cache_path="/tmp/ths_cookies.json"
-)
-```
-
-通过账号密码获取到的 Cookie 会写入 `ths_cookie_cache.json`（或自定义的 `cookie_cache_path`），缓存 24 小时，未过期时优先复用，超时后自动重新获取。缓存中仅保存 Cookie 和时间戳，不再落盘明文密码。
-
-命令行工具也支持同样的参数：
-
-- 如果同时提供 `--username` 和 `--password`，CLI 会执行账号密码登录。
-- 如果只提供 `--username`，CLI 会尝试读取该账号对应的缓存。
-- 如果不提供认证参数，CLI 会先尝试复用最近一次有效的凭据缓存；若没有命中，则保持未登录。
-
-例如：
-
-```bash
-python main.py list
-python main.py --username <13300000000> --password <yourpass> list
-```
-
-常用分组管理命令：
-
-```bash
-python main.py group add "新分组"
-python main.py group del 消费
-python main.py group share 消费 604800   # 有效期 7 天
-```
+调整配置时只需在应用启动阶段覆写上述常量即可；如需查看全部可调项，请直接参考 [config.py](config.py)。
 
 ### “我的自选”与分组
 
@@ -215,10 +187,6 @@ with PortfolioManager() as portfolio:
 - `BJ`: 北京证券交易所
 - `KC`: 科创板
 - `CY`: 创业板
-
-## 数据缓存
-
-工具会自动将分组数据缓存到 `ths_favorite_cache.json` 文件中，减少网络请求次数，提高运行效率。
 
 ## 注意事项
 
