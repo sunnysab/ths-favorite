@@ -11,6 +11,10 @@ DEFAULT_HEADERS: Dict[str, str] = {
 }
 
 API_BASE_URL: str = "https://ugc.10jqka.com.cn"
+SELF_STOCK_V2_BASE_URL: str = "https://t.10jqka.com.cn"
+SELF_STOCK_V2_LIST_PATH: str = "/newcircle/group/getSelfStockWithMarket/"
+SELF_STOCK_V2_MODIFY_PATH: str = "/newcircle/group/modifySelfStock/"
+# Deprecated: old my_stock.php selfstock protocol.
 SELF_STOCK_API_URL: str = "http://selfstock.10jqka.com.cn/my_stock.php"
 
 ENDPOINTS = {

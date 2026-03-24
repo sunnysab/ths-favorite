@@ -149,8 +149,7 @@ class PortfolioManager:
         if not refresh and self._self_stock_cache is not None:
             return StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=list(self._self_stock_cache.items))
 
-        account, password = self._resolve_self_stock_credentials()
-        _, items = self._api.download_self_stocks(account=account, password=password, marketcode="1")
+        _, items = self._api.download_self_stocks()
         parsed_items = [
             StockItem(code=code, market=market_abbr(market_id))
             for code, market_id in items
@@ -525,6 +524,7 @@ class PortfolioManager:
         return (code, (market_short or "").upper())
 
     def _resolve_self_stock_credentials(self) -> Tuple[str, str]:
+        """Deprecated: old my_stock.php selfstock protocol."""
         cookies = self.api_client.get_cookies()
         account = cookies.get("escapename") or cookies.get("u_name")
         password = self._session_manager.get_cached_password()
@@ -554,16 +554,9 @@ class PortfolioManager:
         else:
             raise THSAPIError("我的自选", f"未知操作: {action}")
 
-        account, password = self._resolve_self_stock_credentials()
-        payload_items = [
-            (item.code, market_code(item.market or ""))
-            for item in updated_items
-        ]
         result = self._api.upload_self_stocks(
-            account=account,
-            password=password,
-            marketcode="1",
-            items=payload_items,
+            op="add" if action == "add" else "del",
+            stockcode=f"{item_code}_{api_item_type}",
         )
         self._self_stock_cache = StockGroup(
             name=SELF_STOCK_DEFAULT_NAME,
