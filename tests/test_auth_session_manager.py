@@ -13,11 +13,11 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
     def write_cache(self, cache_path: Path, payload):
         cache_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    def test_browser_auth_method_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "未知的 auth_method"):
-            SessionManager(auth_method="browser").resolve()
+    def test_removed_auth_method_kwarg_is_rejected(self):
+        with self.assertRaises(TypeError):
+            SessionManager(auth_method="browser")
 
-    def test_credentials_mode_reads_matching_cached_cookies_without_browser_fallback(self):
+    def test_username_only_reads_matching_cached_cookies(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "cookies.json"
             now = time.time()
@@ -41,7 +41,6 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
             self.write_cache(cache_path, cache_data)
 
             manager = SessionManager(
-                auth_method="credentials",
                 username="target",
                 cookie_cache_path=str(cache_path),
                 cookie_cache_ttl_seconds=10_000,
@@ -51,7 +50,7 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
 
             self.assertEqual(resolved, {"sessionid": "new"})
 
-    def test_credentials_mode_ignores_other_accounts_cache_and_uses_requested_account(self):
+    def test_username_and_password_ignore_other_accounts_cache_and_use_requested_account(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "cookies.json"
             now = time.time()
@@ -74,7 +73,6 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
             )
 
             manager = SessionManager(
-                auth_method="credentials",
                 username="target",
                 password="secret",
                 cookie_cache_path=str(cache_path),
@@ -87,7 +85,7 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
             self.assertEqual(resolved, {"sessionid": "target-user"})
             login_factory.assert_called_once_with("target", "secret")
 
-    def test_credentials_mode_does_not_persist_plain_password_in_cache_entry(self):
+    def test_username_and_password_do_not_persist_plain_password_in_cache_entry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "cookies.json"
             login_factory = Mock(
@@ -100,7 +98,6 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
             )
 
             manager = SessionManager(
-                auth_method="credentials",
                 username="target",
                 password="secret",
                 cookie_cache_path=str(cache_path),

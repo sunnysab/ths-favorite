@@ -64,7 +64,6 @@ from service import PortfolioManager
 
 # 创建实例，使用账号密码登录
 with PortfolioManager(
-    auth_method="credentials",
     username="your_account",
     password="your_password",
 ) as portfolio:
@@ -104,7 +103,7 @@ with PortfolioManager(
 
 > CLI 依赖不属于基础安装。如需运行 `python main.py ...`，请先安装 `cli` 可选依赖。
 
-命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--username`, `--password`, `--cookie-cache`）。CLI 不再提供浏览器 Cookie 提取；如需访问远端接口，请显式提供账号密码，或在 Python API 中通过 `cookies=` / `set_cookies()` 注入现成 Cookie。常见操作如下：
+命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--username`, `--password`, `--cookie-cache`）。CLI 不再提供浏览器 Cookie 提取；如需访问远端接口，请显式提供账号密码，或在 Python API 中通过 `cookies=` / `set_cookies()` 注入现成 Cookie。常见操作如下：
 
 ```bash
 # 列出全部分组或查看单个分组
@@ -125,24 +124,24 @@ python main.py group share 消费 604800
 
 # 使用账号密码登录再执行命令
 python main.py --username 13300000000 --password yourpass list
-python main.py --auth-method credentials --username 13300000000 --password yourpass list
 ```
 
 详细 CLI 与 API 说明请参见 [使用指南](TUTORIAL.md)。
 
 ## Cookie 获取与缓存
 
-`PortfolioManager` 提供两种方式来初始化会话：
+`PortfolioManager` 会按传入参数自动决定是否登录：
 
-- `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`；仅提供用户名时只会尝试读取该账号的缓存，未命中即提示补充密码。
-- `auth_method="none"`：跳过自动处理，此时可以通过 `cookies` 参数显式传入。
+- 同时提供 `username` 和 `password`：使用账号密码调用官方登录流程获取 Cookie。
+- 仅提供 `username`：尝试读取该账号对应的缓存，未命中即提示补充密码。
+- 提供 `cookies`：直接复用显式传入的 Cookie。
+- 什么都不提供：不自动登录，适合后续通过 `set_cookies()` 注入 Cookie。
 
 示例：
 
 ```python
 # 使用账号密码登录，并自定义缓存文件位置
 portfolio = PortfolioManager(
-    auth_method="credentials",
     username="your_account",
     password="your_password",
     cookie_cache_path="/tmp/ths_cookies.json"
@@ -153,15 +152,15 @@ portfolio = PortfolioManager(
 
 命令行工具也支持同样的参数：
 
-- 如果提供了 `--username` 或 `--password` 但未显式指定 `--auth-method`，CLI 会自动切换到 `credentials` 模式。
-- 如果不提供认证参数，CLI 会按 `auth_method=none` 启动；这适合调用方已手动准备好 Cookie 的场景，不会自动尝试浏览器或缓存登录。
+- 如果同时提供 `--username` 和 `--password`，CLI 会执行账号密码登录。
+- 如果只提供 `--username`，CLI 会尝试读取该账号对应的缓存。
+- 如果不提供认证参数，CLI 不会自动登录；这适合调用方已手动准备好 Cookie 的场景。
 
 例如：
 
 ```bash
 python main.py list
 python main.py --username <13300000000> --password <yourpass> list
-python main.py --auth-method credentials --username <13300000000> --password <yourpass> list
 ```
 
 常用分组管理命令：
@@ -223,8 +222,8 @@ with PortfolioManager() as portfolio:
 
 ## 注意事项
 
-1. 推荐优先使用 `auth_method="credentials"` 或 CLI 的 `--username/--password` 获取会话。
-2. 如果使用 `auth_method="none"`，请确保你注入的 Cookie 至少包含可访问接口所需的登录态。
+1. 推荐优先使用 CLI 的 `--username/--password` 或 Python API 的 `username=` / `password=` 获取会话。
+2. 如果使用显式注入的 Cookie，请确保其中至少包含可访问接口所需的登录态。
 3. Cookie 过期后需重新登录或重新注入。
 
 ## 授权协议

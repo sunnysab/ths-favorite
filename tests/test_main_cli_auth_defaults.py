@@ -11,26 +11,30 @@ def parse_args(argv):
 
 
 class MainCliAuthDefaultsTest(unittest.TestCase):
-    def test_defaults_to_none_auth_when_no_auth_flags_are_provided(self):
+    def test_defaults_do_not_add_auth_method_when_no_auth_flags_are_provided(self):
         args = parse_args(["list"])
 
-        self.assertEqual(args.auth_method, "none")
+        self.assertFalse(hasattr(args, "auth_method"))
 
-    def test_infers_credentials_auth_when_username_and_password_are_provided_after_subcommand(self):
+    def test_preserves_credentials_args_when_username_and_password_are_provided_after_subcommand(self):
         args = parse_args(["list", "--username", "user", "--password", "secret"])
 
-        self.assertEqual(args.auth_method, "credentials")
+        self.assertEqual(args.username, "user")
+        self.assertEqual(args.password, "secret")
+        self.assertFalse(hasattr(args, "auth_method"))
 
-    def test_infers_credentials_auth_when_only_username_is_provided(self):
+    def test_preserves_username_when_only_username_is_provided(self):
         args = parse_args(["list", "--username", "user"])
 
-        self.assertEqual(args.auth_method, "credentials")
+        self.assertEqual(args.username, "user")
+        self.assertIsNone(args.password)
+        self.assertFalse(hasattr(args, "auth_method"))
 
-    def test_rejects_browser_auth_method(self):
+    def test_rejects_auth_method_flag(self):
         parser = build_parser()
 
         with self.assertRaises(SystemExit):
-            parser.parse_args(["--auth-method", "browser", "list"])
+            parser.parse_args(["--auth-method", "credentials", "list"])
 
     def test_rejects_browser_flag(self):
         parser = build_parser()

@@ -13,7 +13,6 @@ class SelfstockServiceTest(unittest.TestCase):
     def build_manager(self) -> PortfolioManager:
         tmpdir = Path(tempfile.mkdtemp())
         manager = PortfolioManager(
-            auth_method="none",
             cookie_cache_path=str(tmpdir / "cookies.json"),
         )
         manager._group_cache_path = str(tmpdir / "groups.json")

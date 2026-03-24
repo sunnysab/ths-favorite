@@ -12,13 +12,12 @@
 ### 1.2 全局选项
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--auth-method {credentials,none}` | `none` | 选择获取 Cookie 的方式。`credentials` 使用账号密码登录；`none` 表示不自动登录，适合调用方已经准备好 Cookie 的场景。 |
-| `--username` / `--password` | `None` | `auth-method=credentials` 时必填的账号、密码。 |
+| `--username` / `--password` | `None` | 同时提供时执行账号密码登录；仅提供 `--username` 时尝试读取该账号缓存。 |
 | `--cookie-cache <path>` | `ths_cookie_cache.json` | 覆盖默认的 Cookie 缓存文件路径，缓存有效期 24 小时。 |
 
-> 未提供任何认证参数时，CLI 默认按 `none` 模式启动，不会自动尝试浏览器或缓存登录。
-> 仅提供 `--username` 而不提供 `--password` 时，CLI 会按 `credentials` 模式尝试读取该账号的缓存，未命中会直接提示补充密码。
-> 这些全局选项可放在任意子命令之前；如果已提供账号密码，也可以省略 `--auth-method credentials`，例如 `python main.py --username 13300000000 --password pass list`。
+> 未提供任何认证参数时，CLI 不会自动尝试浏览器或缓存登录。
+> 仅提供 `--username` 而不提供 `--password` 时，CLI 会尝试读取该账号的缓存，未命中会直接提示补充密码。
+> 这些全局选项可放在任意子命令之前，例如 `python main.py --username 13300000000 --password pass list`。
 
 ### 1.3 子命令总览
 | 子命令 | 作用 | 关键参数 |
@@ -69,7 +68,6 @@
 1. **账号密码登录**：
    ```bash
    python main.py --username 13300000000 --password pass list
-   python main.py --auth-method credentials --username 13300000000 --password pass list
    ```
 2. **批量维护分组**：
    ```bash
@@ -85,8 +83,7 @@
 from service import PortfolioManager
 
 with PortfolioManager(
-    auth_method="credentials",  # 或 "none"
-    username="13300000000",     # credentials 模式参数
+    username="13300000000",
     password="yourpass",
     cookie_cache_path="/tmp/ths_cookie_cache.json",  # 可选
     cookie_cache_ttl_seconds=24*3600                  # 默认 24 小时
@@ -126,7 +123,6 @@ with PortfolioManager(
 ### 2.4 示例：全流程自动化
 ```python
 with PortfolioManager(
-    auth_method="credentials",
     username="13300000000",
     password="yourpass",
 ) as ths:

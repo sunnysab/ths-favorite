@@ -213,7 +213,6 @@ class SessionManager:
         self,
         *,
         cookies: Optional[Union[Dict[str, str], str]] = None,
-        auth_method: str = "none",
         username: Optional[str] = None,
         password: Optional[str] = None,
         cookie_cache_path: Optional[str] = None,
@@ -221,7 +220,6 @@ class SessionManager:
         login_factory: Optional[Callable[[str, str], SessionResult]] = None,
     ) -> None:
         self._explicit_cookies = self._normalize_cookies(cookies)
-        self._auth_method = (auth_method or "none").lower()
         self._username = username
         self._password = password
         self._cookie_cache_path = cookie_cache_path or COOKIE_CACHE_FILE
@@ -233,15 +231,13 @@ class SessionManager:
         if self._explicit_cookies is not None:
             return self._explicit_cookies.copy()
         if self._resolved_cache is None:
-            self._resolved_cache = self._resolve_from_strategy()
+            self._resolved_cache = self._resolve_from_inputs()
         return self._resolved_cache.copy() if self._resolved_cache else None
 
-    def _resolve_from_strategy(self) -> Optional[Dict[str, str]]:
-        if self._auth_method in {"none", "skip"}:
+    def _resolve_from_inputs(self) -> Optional[Dict[str, str]]:
+        if self._username is None and self._password is None:
             return None
-        if self._auth_method in {"credentials", "login"}:
-            return self._resolve_credentials_flow()
-        raise ValueError(f"未知的 auth_method: {self._auth_method}")
+        return self._resolve_credentials_flow()
 
     def _resolve_credentials_flow(self) -> Optional[Dict[str, str]]:
         if self._username and self._password:
@@ -267,7 +263,7 @@ class SessionManager:
 
         raise THSAPIError(
             "认证",
-            "auth_method=credentials 需要同时提供 username 和 password。",
+            "使用账号密码登录时需要同时提供 username 和 password。",
         )
 
     def _fetch_with_cache(

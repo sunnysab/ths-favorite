@@ -110,14 +110,8 @@ def _get_tabulate_module() -> Any:
 
 def build_parser() -> argparse.ArgumentParser:
     global_parser = argparse.ArgumentParser(add_help=False)
-    global_parser.add_argument(
-        "--auth-method",
-        choices=["credentials", "none"],
-        default=argparse.SUPPRESS,
-        help="选择获取 cookies 的方式",
-    )
-    global_parser.add_argument("--username", default=argparse.SUPPRESS, help="当 auth-method=credentials 时使用的账号")
-    global_parser.add_argument("--password", default=argparse.SUPPRESS, help="当 auth-method=credentials 时使用的密码")
+    global_parser.add_argument("--username", default=argparse.SUPPRESS, help="登录账号")
+    global_parser.add_argument("--password", default=argparse.SUPPRESS, help="登录密码")
     global_parser.add_argument("--cookie-cache", default=argparse.SUPPRESS, help="自定义 cookies 缓存文件路径")
 
     parser = argparse.ArgumentParser(
@@ -204,13 +198,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def apply_global_defaults(args: argparse.Namespace) -> None:
-    if not hasattr(args, "auth_method"):
-        has_explicit_credentials = bool(getattr(args, "username", None) or getattr(args, "password", None))
-        if has_explicit_credentials:
-            args.auth_method = "credentials"
-        else:
-            args.auth_method = "none"
-
     defaults = {
         "username": None,
         "password": None,
@@ -347,7 +334,6 @@ def handle_self_command(manager: PortfolioManager, args: argparse.Namespace) -> 
 
 def execute(args: argparse.Namespace) -> None:
     manager_kwargs = {
-        "auth_method": args.auth_method,
         "username": args.username,
         "password": args.password,
         "cookie_cache_path": args.cookie_cache,
