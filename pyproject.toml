@@ -25,6 +25,11 @@ browser = [
     "browser-cookie3"
 ]
 
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
 [project.urls]
 Homepage = "https://github.com/sunnysab/ths-favorite"
 Repository = "https://github.com/sunnysab/ths-favorite"
