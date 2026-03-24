@@ -104,7 +104,7 @@ with PortfolioManager(
 - Cookie 会写入 `cookie_cache_path`（默认 `ths_cookie_cache.json`），命中缓存即复用，失效后自动刷新。
 - 分组及股票列表会序列化到 `ths_favorite_cache.json`，`get_all_groups(use_cache=True)` 可在 API 不可用时读取本地缓存。
 - “我的自选”会单独缓存到 `ths_self_stock_cache.json`。
-- “我的自选”的底层读写走 `https://t.10jqka.com.cn/newcircle/group/...`，直接复用当前会话或缓存中的 Cookie；旧 `my_stock.php` 代码仅作为 deprecated 内部兼容实现保留。
+- “我的自选”的底层读写走新版浏览自选接口，直接复用当前会话或缓存中的 Cookie；旧的明文协议实现仅作为 deprecated 内部兼容代码保留。
 
 ### 2.3 常用方法
 | 方法 | 说明 | 返回值 |
