@@ -108,7 +108,7 @@ class PortfolioManager:
 
         self._update_version_from_response_data(raw_data)
         parsed_groups = self._parse_group_list(raw_data)
-        self.refresh_selfstock_detail(force=True)
+        self._refresh_selfstock_detail_best_effort(context="获取分组")
 
         formatted: Dict[str, StockGroup] = {}
         for group_raw in parsed_groups:
@@ -147,6 +147,7 @@ class PortfolioManager:
             return StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=list(self._self_stock_cache.items))
 
         _, items = self._api.download_self_stocks()
+        self._refresh_selfstock_detail_best_effort(context="获取我的自选")
         parsed_items = [
             StockItem(code=code, market=market_abbr(market_id))
             for code, market_id in items
@@ -306,6 +307,12 @@ class PortfolioManager:
             len(index),
         )
         return version
+
+    def _refresh_selfstock_detail_best_effort(self, *, context: str) -> None:
+        try:
+            self.refresh_selfstock_detail(force=True)
+        except (THSAPIError, THSNetworkError):
+            logger.warning("%s 时刷新 selfstock_detail 失败，继续返回基础结果。", context)
 
     def get_item_snapshot(self, symbol: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
         if refresh or not self._selfstock_detail_map:

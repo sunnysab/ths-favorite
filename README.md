@@ -1,13 +1,13 @@
 # 同花顺自选股管理工具
 
-一个用于管理同花顺自选股的 Python 工具，支持从浏览器获取登录状态，自动同步自选股分组数据，以及添加/删除自选股项目。
+一个用于管理同花顺自选股的 Python 工具，支持使用账号密码获取会话 Cookie、显式注入 Cookie，并自动同步自选股分组数据以及添加/删除自选股项目。
 
 > [!NOTE]
 > 该项目代码主要由 AI 编写，可能存在一些 Bug 或考虑不周的地方。如有改进需求可以提 issue 或 pull request。
 
 ## 项目功能
 
-- 通过同花顺密码或浏览器Cookie登录
+- 通过同花顺账号密码登录，或显式传入 Cookie
 - 获取所有自选股分组数据，并自动附带 selfstock_detail 接口提供的加入价格/时间
 - 获取“我的自选”列表，并支持将其作为虚拟分组并入结果
 - 添加股票到指定自选股分组
@@ -43,21 +43,6 @@ pip install -e '.[cli]'
 pip install 'ths-favorite[cli]'
 ```
 
-如果需要从浏览器获取 Cookie 功能，请额外安装 `browser` 可选依赖:
-
-```bash
-pip install -e '.[browser]'
-pip install 'ths-favorite[browser]'
-```
-
-注意，`browser-cookie3` 库用于读取浏览器的 Cookie。在 Windows 下，它依赖了卷影服务以强行读出存储文件（[原理](https://www.cnblogs.com/zpchcbd/p/18860664)，[issue](https://github.com/sunnysab/ths-favorite/issues/2)），该操作**需要管理员权限**（[shadowcopy](https://pypi.org/project/shadowcopy/)）。请阅读代码并了解潜在的安全风险。
-
-如果两者都需要，可以一次性安装：
-
-```bash
-pip install -e '.[cli,browser]'
-```
-
 ## 配置
 
 所有常量（User-Agent、缓存文件路径、API URL 等）均集中在 `config.py` 中。作为库使用时，推荐直接修改该文件或在运行前以 `import config` 的方式动态覆盖对应常量：
@@ -77,8 +62,12 @@ config.COOKIE_CACHE_FILE = "/tmp/ths_cookies.json"
 ```python
 from service import PortfolioManager
 
-# 创建实例，自动从浏览器获取 Cookie
-with PortfolioManager() as portfolio:
+# 创建实例，使用账号密码登录
+with PortfolioManager(
+    auth_method="credentials",
+    username="your_account",
+    password="your_password",
+) as portfolio:
     self_group = portfolio.get_self_stocks()
     print(f"分组: {self_group.name}, ID: {self_group.group_id}")
     print(f"包含 {len(self_group.items)} 个股票")
@@ -115,7 +104,7 @@ with PortfolioManager() as portfolio:
 
 > CLI 依赖不属于基础安装。如需运行 `python main.py ...`，请先安装 `cli` 可选依赖。
 
-命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--browser`, `--username`, `--password`, `--cookie-cache`）。CLI 在未显式指定认证方式时会先看本地 Cookie 缓存：优先复用最近一次有效的账号密码缓存；若没有可用凭据缓存，再回退到浏览器 Cookie。常见操作如下：
+命令行入口为 `python main.py`，支持与 Python API 相同的认证参数（`--auth-method`, `--username`, `--password`, `--cookie-cache`）。CLI 不再提供浏览器 Cookie 提取；如需访问远端接口，请显式提供账号密码，或在 Python API 中通过 `cookies=` / `set_cookies()` 注入现成 Cookie。常见操作如下：
 
 ```bash
 # 列出全部分组或查看单个分组
@@ -143,18 +132,14 @@ python main.py --auth-method credentials --username 13300000000 --password yourp
 
 ## Cookie 获取与缓存
 
-`PortfolioManager` 提供三种方式来初始化会话：
+`PortfolioManager` 提供两种方式来初始化会话：
 
-- `auth_method="browser"`（默认）：通过 `browser_cookie3` 读取指定浏览器（默认 Firefox）中在 `*.10jqka.com.cn` 下的 Cookie。
 - `auth_method="credentials"`：使用用户名和密码调用官方登录流程获取 Cookie，需要同时提供 `username` 和 `password`；仅提供用户名时只会尝试读取该账号的缓存，未命中即提示补充密码。
 - `auth_method="none"`：跳过自动处理，此时可以通过 `cookies` 参数显式传入。
 
 示例：
 
 ```python
-# 使用 Chrome 浏览器提取 Cookie，并使用默认的一天有效期缓存
-portfolio = PortfolioManager(auth_method="browser", browser_name="chrome")
-
 # 使用账号密码登录，并自定义缓存文件位置
 portfolio = PortfolioManager(
     auth_method="credentials",
@@ -164,13 +149,12 @@ portfolio = PortfolioManager(
 )
 ```
 
-无论是通过浏览器还是账号密码获取的 Cookie，都会写入 `ths_cookie_cache.json`（或自定义的 `cookie_cache_path`），缓存 24 小时，未过期时优先复用，超时后自动重新获取。
+通过账号密码获取到的 Cookie 会写入 `ths_cookie_cache.json`（或自定义的 `cookie_cache_path`），缓存 24 小时，未过期时优先复用，超时后自动重新获取。缓存中仅保存 Cookie 和时间戳，不再落盘明文密码。
 
 命令行工具也支持同样的参数：
 
-- 不传认证参数时，CLI 会优先复用本地最近一次有效的凭据缓存；若没有命中，再回退到浏览器 Cookie。
-- 如果提供了 `--username` 或 `--password` 但未显式指定 `--auth-method`，CLI 会自动切换到 `credentials` 模式，并优先读取该账号对应的缓存。
-- 如果显式提供了 `--browser`，CLI 会按该浏览器对应的缓存/浏览器配置处理，不会误用其他账号缓存。
+- 如果提供了 `--username` 或 `--password` 但未显式指定 `--auth-method`，CLI 会自动切换到 `credentials` 模式。
+- 如果不提供认证参数，CLI 会按 `auth_method=none` 启动；这适合调用方已手动准备好 Cookie 的场景，不会自动尝试浏览器或缓存登录。
 
 例如：
 
@@ -197,9 +181,7 @@ python main.py group share 消费 604800   # 有效期 7 天
 - 可通过 `get_self_stocks()` 单独获取
 - 也可通过 `get_all_groups(include_self_stocks=True)` 并入全部分组结果
 
-对调用方来说，`stock add/del` 可以直接对 `我的自选` 生效，但其底层协议与普通分组不同，走的是新版浏览自选接口，并直接复用当前会话的 Cookie。
-
-旧的明文 selfstock 实现仍保留在仓库中，但仅作为 deprecated 内部兼容代码，不再是主流程。
+对调用方来说，`stock add/del` 可以直接对 `我的自选` 生效，但其底层协议与普通分组不同，走的是新版 Cookie 自选接口，并直接复用当前会话的 Cookie。
 
 ### 自选股价格/时间元数据
 
@@ -218,6 +200,7 @@ with PortfolioManager() as portfolio:
 - `refresh_selfstock_detail(force=True)` 会立即重新下载最新的价格/时间快照。
 - `selfstock_detail_version` 属性提供最近一次下载的版本号，便于与同花顺客户端保持一致。
 - `get_item_snapshot` 可单独查询任意股票的加入信息（自动复用/刷新缓存）。
+- 如果 `selfstock_detail` 接口临时失败，`get_all_groups()` / `get_self_stocks()` 仍会返回基础股票列表，只是缺少价格与加入时间增强信息。
 
 ### 股票代码格式
 
@@ -240,9 +223,9 @@ with PortfolioManager() as portfolio:
 
 ## 注意事项
 
-1. 如需使用从浏览器读取 Cookie 功能（需安装 browser-cookie3 依赖），请确保浏览器已登录同花顺网站
-2. 默认从 Firefox 浏览器读取 Cookie，如需使用其他浏览器可修改代码
-3. Cookie 过期后需重新登录浏览器
+1. 推荐优先使用 `auth_method="credentials"` 或 CLI 的 `--username/--password` 获取会话。
+2. 如果使用 `auth_method="none"`，请确保你注入的 Cookie 至少包含可访问接口所需的登录态。
+3. Cookie 过期后需重新登录或重新注入。
 
 ## 授权协议
 

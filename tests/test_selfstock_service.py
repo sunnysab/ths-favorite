@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from config import SELF_STOCK_DEFAULT_NAME, SELF_STOCK_GROUP_ID
+from exceptions import THSNetworkError
 from models import StockGroup
 from service import PortfolioManager
 
@@ -96,6 +97,47 @@ class SelfstockServiceTest(unittest.TestCase):
         manager.delete_item_from_group(SELF_STOCK_DEFAULT_NAME, "600519.SH")
 
         manager._api.upload_self_stocks.assert_called_once_with(op="del", stockcode="600519_17")
+
+    def test_get_all_groups_still_returns_groups_when_selfstock_detail_refresh_fails(self):
+        manager = self.build_manager()
+        manager._api.query_groups = Mock(
+            return_value={
+                "version": 1,
+                "group_list": [
+                    {
+                        "id": "0_1",
+                        "name": "消费",
+                        "content": "600519,17",
+                    }
+                ],
+            }
+        )
+        manager.refresh_selfstock_detail = Mock(side_effect=THSNetworkError("selfstock_detail", "boom"))
+
+        groups = manager.get_all_groups()
+
+        self.assertIn("消费", groups)
+        self.assertEqual(groups["消费"].items[0].code, "600519")
+
+    def test_get_self_stocks_still_returns_items_when_selfstock_detail_refresh_fails(self):
+        manager = self.build_manager()
+        manager._api.download_self_stocks = Mock(
+            return_value=(
+                {
+                    "errorCode": 0,
+                    "errorMsg": "",
+                    "result": [{"code": "300830", "marketid": "33"}],
+                    "isT": True,
+                },
+                [("300830", "33")],
+            )
+        )
+        manager.refresh_selfstock_detail = Mock(side_effect=THSNetworkError("selfstock_detail", "boom"))
+
+        group = manager.get_self_stocks(refresh=True)
+
+        self.assertEqual([item.code for item in group.items], ["300830"])
+        manager.refresh_selfstock_detail.assert_called_once_with(force=True)
 
 
 if __name__ == "__main__":

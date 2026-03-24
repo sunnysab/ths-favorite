@@ -7,18 +7,16 @@
 ### 1.1 环境与入口
 - 作为 Python 库使用时，基础安装即可：`pip install -e .` 或 `pip install ths-favorite`。
 - 如需运行 CLI，请额外安装 `cli` 可选依赖：`pip install -e '.[cli]'` 或 `pip install 'ths-favorite[cli]'`。
-- 如需浏览器 Cookie 能力，请额外安装 `browser` 可选依赖：`pip install -e '.[browser]'` 或 `pip install 'ths-favorite[browser]'`。
 - 所有命令均通过 `python main.py <command>` 触发，可使用 `--help` 查看完整帮助。
 
 ### 1.2 全局选项
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
-| `--auth-method {browser,credentials,none}` | 自动推断 | 选择获取 Cookie 的方式。`browser` 自动从浏览器读取；`credentials` 使用账号密码；`none` 表示手动传入 Cookie（需结合 `service.PortfolioManager(cookies=...)` ）。如果未显式传该参数，CLI 会优先尝试本地缓存；提供了 `--username` / `--password` 时会自动切换到 `credentials`。 |
-| `--browser <name>` | `firefox` | `auth-method=browser` 时使用的浏览器标识，`browser_cookie3` 支持 `chrome`、`edge`、`firefox` 等。 |
+| `--auth-method {credentials,none}` | `none` | 选择获取 Cookie 的方式。`credentials` 使用账号密码登录；`none` 表示不自动登录，适合调用方已经准备好 Cookie 的场景。 |
 | `--username` / `--password` | `None` | `auth-method=credentials` 时必填的账号、密码。 |
 | `--cookie-cache <path>` | `ths_cookie_cache.json` | 覆盖默认的 Cookie 缓存文件路径，缓存有效期 24 小时。 |
 
-> 未提供任何认证参数时，CLI 会先尝试复用本地最近一次有效的凭据缓存；若没有命中，再回退到浏览器 Cookie。
+> 未提供任何认证参数时，CLI 默认按 `none` 模式启动，不会自动尝试浏览器或缓存登录。
 > 仅提供 `--username` 而不提供 `--password` 时，CLI 会按 `credentials` 模式尝试读取该账号的缓存，未命中会直接提示补充密码。
 > 这些全局选项可放在任意子命令之前；如果已提供账号密码，也可以省略 `--auth-method credentials`，例如 `python main.py --username 13300000000 --password pass list`。
 
@@ -68,13 +66,12 @@
   ```
 
 ### 1.5 常见场景
-1. **缓存优先 / 浏览器回退**：直接运行 `python main.py list`，CLI 会先检查本地最近一次有效的凭据缓存；若没有命中，再尝试浏览器 Cookie。
-2. **账号密码登录**：
+1. **账号密码登录**：
    ```bash
    python main.py --username 13300000000 --password pass list
    python main.py --auth-method credentials --username 13300000000 --password pass list
    ```
-3. **批量维护分组**：
+2. **批量维护分组**：
    ```bash
    python main.py group add "事件驱动"
    python main.py stock add 事件驱动 300750.SZ
@@ -88,8 +85,7 @@
 from service import PortfolioManager
 
 with PortfolioManager(
-    auth_method="browser",      # 或 "credentials" / "none"
-    browser_name="chrome",      # 仅在 browser 模式下使用
+    auth_method="credentials",  # 或 "none"
     username="13300000000",     # credentials 模式参数
     password="yourpass",
     cookie_cache_path="/tmp/ths_cookie_cache.json",  # 可选
@@ -102,9 +98,10 @@ with PortfolioManager(
 
 ### 2.2 缓存策略
 - Cookie 会写入 `cookie_cache_path`（默认 `ths_cookie_cache.json`），命中缓存即复用，失效后自动刷新。
+- Cookie 缓存仅保存 Cookie 和时间戳，不再保存明文密码。
 - 分组及股票列表会序列化到 `ths_favorite_cache.json`，`get_all_groups(use_cache=True)` 可在 API 不可用时读取本地缓存。
 - “我的自选”会单独缓存到 `ths_self_stock_cache.json`。
-- “我的自选”的底层读写走新版浏览自选接口，直接复用当前会话或缓存中的 Cookie；旧的明文协议实现仅作为 deprecated 内部兼容代码保留。
+- “我的自选”的底层读写走新版 Cookie 自选接口，直接复用当前会话或缓存中的 Cookie。
 
 ### 2.3 常用方法
 | 方法 | 说明 | 返回值 |
@@ -122,12 +119,17 @@ with PortfolioManager(
 | `close()` | 手动关闭客户端（`with` 语句会自动调用）。 | `None` |
 
 > `selfstock_detail_version` 属性可查看最近一次下载的 selfstock_detail 版本号；每个 `StockItem` 实例也新增了 `price` 与 `added_at` 字段。
+> 如果 `selfstock_detail` 临时失败，`get_all_groups()` 与 `get_self_stocks()` 仍会返回基础列表，只是缺少价格和加入时间增强信息。
 
 > “我的自选”默认以名称 `我的自选`、保留 ID `__selfstock__` 暴露；也可通过 `get_all_groups(include_self_stocks=True)` 并入所有分组结果。
 
 ### 2.4 示例：全流程自动化
 ```python
-with PortfolioManager(auth_method="browser") as ths:
+with PortfolioManager(
+    auth_method="credentials",
+    username="13300000000",
+    password="yourpass",
+) as ths:
     self_group = ths.get_self_stocks()
     print(self_group.items[:3])
 
