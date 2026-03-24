@@ -11,7 +11,7 @@ DEFAULT_HEADERS: Dict[str, str] = {
 }
 
 API_BASE_URL: str = "https://ugc.10jqka.com.cn"
-SELF_STOCK_API_URL: str = "https://selfstock.10jqka.com.cn/my_stock.php"
+SELF_STOCK_API_URL: str = "http://selfstock.10jqka.com.cn/my_stock.php"
 
 ENDPOINTS = {
     "query_groups": "/optdata/selfgroup/open/api/group/v1/query",
