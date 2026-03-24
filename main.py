@@ -301,17 +301,17 @@ def list_self_stocks(manager: PortfolioManager) -> None:
 def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
     if args.group_command == "add":
         manager.add_group(args.name)
-        print(f"✅ 已成功创建分组 '{args.name}'")
+        print(f"已成功创建分组 '{args.name}'")
     elif args.group_command == "del":
         manager.delete_group(args.group)
-        print(f"🗑️ 已删除分组 '{args.group}'")
+        print(f"已删除分组 '{args.group}'")
     elif args.group_command == "share":
         result = manager.share_group(args.group, args.valid_time)
         share_url = result.get("share_url") if isinstance(result, dict) else None
         if share_url:
-            print(f"🔗 分享链接: {share_url}")
+            print(f"分享链接: {share_url}")
         else:
-            print("✅ 分享分组成功，但未返回链接。")
+            print("分享分组成功，但未返回链接。")
     else:
         raise THSAPIError("分组命令", f"未知的子命令 {args.group_command}")
 
@@ -319,10 +319,10 @@ def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) ->
 def handle_stock_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
     if args.stock_command == "add":
         manager.add_item_to_group(args.group, args.stock)
-        print(f"✅ 已将 {args.stock} 添加到分组 '{args.group}'")
+        print(f"已将 {args.stock} 添加到分组 '{args.group}'")
     elif args.stock_command == "del":
         manager.delete_item_from_group(args.group, args.stock)
-        print(f"🗑️ 已从分组 '{args.group}' 删除 {args.stock}")
+        print(f"已从分组 '{args.group}' 删除 {args.stock}")
 
 
 def handle_self_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
@@ -369,12 +369,12 @@ if __name__ == "__main__":
     try:
         main()
     except THSNetworkError as exc:
-        print(f"❌ 网络错误: {exc}")
+        print(f"网络错误: {exc}")
         sys.exit(2)
     except THSAPIError as exc:
-        print(f"❌ 操作失败: {exc}")
+        print(f"操作失败: {exc}")
         sys.exit(3)
     except Exception as exc:
         logger.exception("未预料的错误")
-        print(f"❌ 未预期错误: {exc}")
+        print(f"未预期错误: {exc}")
         sys.exit(1)

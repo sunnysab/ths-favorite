@@ -8,6 +8,7 @@ from exceptions import THSAPIError
 from main import (
     apply_global_defaults,
     build_parser,
+    handle_group_command,
     handle_stock_command,
     list_groups,
     list_stocks,
@@ -39,6 +40,32 @@ class SelfstockCliTest(unittest.TestCase):
         handle_stock_command(manager, args)
 
         manager.add_item_to_group.assert_called_once_with("我的自选", "600519.SH")
+
+    def test_group_and_stock_commands_print_plain_text_messages(self):
+        manager = Mock()
+        manager.share_group.return_value = {"share_url": "https://example.com/share"}
+
+        with patch("main.print") as mock_print:
+            handle_group_command(manager, argparse.Namespace(group_command="add", name="消费"))
+            handle_group_command(manager, argparse.Namespace(group_command="del", group="消费"))
+            handle_group_command(
+                manager,
+                argparse.Namespace(group_command="share", group="消费", valid_time=3600),
+            )
+            handle_stock_command(
+                manager,
+                argparse.Namespace(stock_command="add", group="消费", stock="600519.SH"),
+            )
+            handle_stock_command(
+                manager,
+                argparse.Namespace(stock_command="del", group="消费", stock="600519.SH"),
+            )
+
+        self.assertEqual(mock_print.call_args_list[0].args[0], "已成功创建分组 '消费'")
+        self.assertEqual(mock_print.call_args_list[1].args[0], "已删除分组 '消费'")
+        self.assertEqual(mock_print.call_args_list[2].args[0], "分享链接: https://example.com/share")
+        self.assertEqual(mock_print.call_args_list[3].args[0], "已将 600519.SH 添加到分组 '消费'")
+        self.assertEqual(mock_print.call_args_list[4].args[0], "已从分组 '消费' 删除 600519.SH")
 
     def test_default_list_includes_selfstock_group(self):
         manager = Mock()
