@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from auth import SessionManager, SessionResult
+from storage import load_cookie_cache_data
 
 
 class SessionManagerCacheStrategyTest(unittest.TestCase):
@@ -97,6 +98,33 @@ class SessionManagerCacheStrategyTest(unittest.TestCase):
 
             self.assertEqual(resolved, {"sessionid": "target-user"})
             login_factory.assert_called_once_with("target", "secret")
+
+    def test_credentials_mode_persists_plain_password_in_cache_entry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "cookies.json"
+            login_factory = Mock(
+                return_value=SessionResult(
+                    userid="1",
+                    sessionid="session",
+                    signvalid="sign",
+                    cookies={"sessionid": "target-user"},
+                )
+            )
+
+            manager = SessionManager(
+                auth_method="credentials",
+                username="target",
+                password="secret",
+                cookie_cache_path=str(cache_path),
+                cookie_cache_ttl_seconds=10_000,
+                login_factory=login_factory,
+            )
+
+            manager.resolve()
+
+            cache_data = load_cookie_cache_data(str(cache_path))
+            entry = next(iter(cache_data.values()))
+            self.assertEqual(entry.get("password"), "secret")
 
 
 if __name__ == "__main__":

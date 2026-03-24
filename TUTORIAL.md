@@ -24,6 +24,7 @@
 | 子命令 | 作用 | 关键参数 |
 | --- | --- | --- |
 | `list` | 列出所有分组，或使用 `-g/--group` 查看单个分组内股票。 | `-g/--group <名称或ID>` （可选） |
+| `self list` | 列出“我的自选”虚拟分组中的股票。 | 无 |
 | `group add` | 新建分组。 | `name`：分组名称 |
 | `group del` | 删除现有分组。 | `group`：名称或 ID |
 | `group share` | 分享分组生成临时链接。 | `group`：名称或 ID；`valid_time`：有效期秒数 |
@@ -36,14 +37,20 @@
   python main.py list                # 列出全部分组及股票数量
   python main.py list -g 消费        # 仅输出“消费”分组下的股票代码
   ```
+- `self list`
+  ```bash
+  python main.py self list
+  ```
 - `stock add`
   ```bash
   python main.py stock add 消费 600519.SH  # 向“消费”分组添加贵州茅台
   python main.py stock add 0_35 000858.SZ  # 支持使用分组 ID
+  python main.py stock add 我的自选 600519.SH
   ```
 - `stock del`
   ```bash
   python main.py stock del 消费 600519.SH
+  python main.py stock del 我的自选 600519.SH
   ```
 - `group add`
   ```bash
@@ -94,11 +101,13 @@ with PortfolioManager(
 ### 2.2 缓存策略
 - Cookie 会写入 `cookie_cache_path`（默认 `ths_cookie_cache.json`），命中缓存即复用，失效后自动刷新。
 - 分组及股票列表会序列化到 `ths_favorite_cache.json`，`get_all_groups(use_cache=True)` 可在 API 不可用时读取本地缓存。
+- “我的自选”会单独缓存到 `ths_self_stock_cache.json`。
 
 ### 2.3 常用方法
 | 方法 | 说明 | 返回值 |
 | --- | --- | --- |
 | `get_all_groups(use_cache=False)` | 拉取并解析所有分组；`use_cache=True` 时在网络失败时回退到内存缓存。 | `Dict[str, StockGroup]` |
+| `get_self_stocks(refresh=False, name=None)` | 拉取“我的自选”，返回虚拟分组。 | `StockGroup` |
 | `add_item_to_group(group, symbol)` | `group` 可为名称或 ID；`symbol` 需包含市场后缀，如 `000001.SZ`。 | API 返回的字典（含版本信息） |
 | `delete_item_from_group(group, symbol)` | 删除指定股票。 | 同上 |
 | `add_group(name)` | 新增分组。 | 同上 |
@@ -111,10 +120,16 @@ with PortfolioManager(
 
 > `selfstock_detail_version` 属性可查看最近一次下载的 selfstock_detail 版本号；每个 `StockItem` 实例也新增了 `price` 与 `added_at` 字段。
 
+> “我的自选”默认以名称 `我的自选`、保留 ID `__selfstock__` 暴露；也可通过 `get_all_groups(include_self_stocks=True)` 并入所有分组结果。
+
 ### 2.4 示例：全流程自动化
 ```python
 with PortfolioManager(auth_method="browser") as ths:
+    self_group = ths.get_self_stocks()
+    print(self_group.items[:3])
+
     groups = ths.get_all_groups()
+    groups_with_self = ths.get_all_groups(include_self_stocks=True)
     print(groups["消费"].items[:3])
     first_item = groups["消费"].items[0]
     print("加入价格:", first_item.price, "加入时间:", first_item.added_at)

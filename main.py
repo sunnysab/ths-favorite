@@ -161,6 +161,19 @@ def build_parser() -> argparse.ArgumentParser:
     stock_del_parser.add_argument("group", help="分组名称或ID")
     stock_del_parser.add_argument("stock", help="股票代码，格式: code.market (如: 600519.SH)")
 
+    self_parser = subparsers.add_parser(
+        "self",
+        parents=[global_parser],
+        help="我的自选相关操作",
+    )
+    self_subparsers = self_parser.add_subparsers(dest="self_command")
+    self_subparsers.required = True
+    self_subparsers.add_parser(
+        "list",
+        parents=[global_parser],
+        help="列出我的自选",
+    )
+
     return parser
 
 
@@ -232,6 +245,28 @@ def list_stocks(manager: PortfolioManager, group_name: str) -> None:
     print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
 
 
+def list_self_stocks(manager: PortfolioManager) -> None:
+    group = manager.get_self_stocks()
+    if not group.items:
+        print(f"分组 '{group.name}' (ID: {group.group_id}) 暂无股票。")
+        return
+
+    rows = []
+    for item in sorted(group.items, key=lambda entry: (entry.code, entry.market or "")):
+        symbol = f"{item.code}.{item.market}" if item.market else item.code
+        rows.append(
+            [
+                symbol,
+                item.market or "-",
+                _format_price(item.price),
+                _format_added_at(item.added_at),
+            ]
+        )
+
+    print(f"分组 '{group.name}' (ID: {group.group_id}) 包含 {len(group.items)} 个股票:")
+    print(tabulate(rows, headers=["代码", "市场", "加入价", "加入时间"], tablefmt="github"))
+
+
 def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
     if args.group_command == "add":
         manager.add_group(args.name)
@@ -259,6 +294,13 @@ def handle_stock_command(manager: PortfolioManager, args: argparse.Namespace) ->
         print(f"🗑️ 已从分组 '{args.group}' 删除 {args.stock}")
 
 
+def handle_self_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
+    if args.self_command == "list":
+        list_self_stocks(manager)
+    else:
+        raise THSAPIError("我的自选命令", f"未知的子命令 {args.self_command}")
+
+
 def execute(args: argparse.Namespace) -> None:
     manager_kwargs = {
         "auth_method": args.auth_method,
@@ -275,6 +317,8 @@ def execute(args: argparse.Namespace) -> None:
             handle_group_command(manager, args)
         elif args.command == "stock":
             handle_stock_command(manager, args)
+        elif args.command == "self":
+            handle_self_command(manager, args)
         else:
             raise THSAPIError("命令", f"未知的命令 {args.command}")
 

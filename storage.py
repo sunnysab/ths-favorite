@@ -71,6 +71,54 @@ def save_groups_cache(cache_file: str, groups: Dict[str, StockGroup]) -> None:
         logger.exception("保存缓存到文件时发生错误。")
 
 
+def load_self_stock_cache(cache_file: str) -> Optional[StockGroup]:
+    logger.info(f"尝试从文件 '{cache_file}' 加载我的自选缓存...")
+    if not os.path.exists(cache_file):
+        logger.info(f"缓存文件 '{cache_file}' 不存在，跳过加载。")
+        return None
+
+    try:
+        with open(cache_file, "r", encoding="utf-8") as fp:
+            cached_group_data: Dict[str, Any] = json.load(fp)
+    except json.JSONDecodeError:
+        logger.error(f"错误: 缓存文件 '{cache_file}' 内容不是有效的JSON格式。缓存未加载。")
+        return None
+    except Exception:
+        logger.exception("从文件加载我的自选缓存时发生未知错误。")
+        return None
+
+    if not isinstance(cached_group_data, dict):
+        return None
+
+    items: List[StockItem] = [
+        StockItem(code=item_dict["code"], market=item_dict.get("market"))
+        for item_dict in cached_group_data.get("items", [])
+        if item_dict.get("code")
+    ]
+    group_name: Optional[str] = cached_group_data.get("name")
+    group_id: Optional[str] = cached_group_data.get("group_id")
+    if not group_name or not group_id:
+        return None
+    return StockGroup(name=group_name, group_id=group_id, items=items)
+
+
+def save_self_stock_cache(cache_file: str, group: StockGroup) -> None:
+    logger.info(f"尝试将我的自选缓存保存到 '{cache_file}'...")
+    try:
+        serializable = {
+            "name": group.name,
+            "group_id": group.group_id,
+            "items": [
+                {"code": item.code, "market": item.market}
+                for item in group.items
+            ],
+        }
+        with open(cache_file, "w", encoding="utf-8") as fp:
+            json.dump(serializable, fp, ensure_ascii=False, indent=2)
+    except Exception:
+        logger.exception("保存我的自选缓存到文件时发生错误。")
+
+
 def load_cookie_cache_data(cache_path: str) -> Dict[str, Any]:
     """Read the entire cookie cache file into memory."""
 
@@ -121,14 +169,23 @@ def read_cached_cookies(cache_path: str, cache_key: str, ttl_seconds: int) -> Op
     return None
 
 
-def write_cookie_cache(cache_path: str, cache_key: str, cookies_payload: Dict[str, str]) -> None:
+def write_cookie_cache(
+    cache_path: str,
+    cache_key: str,
+    cookies_payload: Dict[str, str],
+    *,
+    extra_fields: Optional[Dict[str, Any]] = None,
+) -> None:
     """Upsert cookies plus timestamp into the cache file."""
 
     cache_data = load_cookie_cache_data(cache_path)
-    cache_data[cache_key] = {
+    entry: Dict[str, Any] = {
         "cookies": {str(k): str(v) for k, v in cookies_payload.items()},
         "timestamp": time.time(),
     }
+    if extra_fields:
+        entry.update(extra_fields)
+    cache_data[cache_key] = entry
 
     dir_name = os.path.dirname(cache_path)
     if dir_name:

@@ -232,6 +232,7 @@ class SessionManager:
         self._cookie_cache_ttl = cookie_cache_ttl_seconds
         self._login_factory = login_factory or create_session
         self._resolved_cache: Optional[Dict[str, str]] = None
+        self._resolved_password: Optional[str] = password
 
     def resolve(self) -> Optional[Dict[str, str]]:
         if self._explicit_cookies is not None:
@@ -239,6 +240,39 @@ class SessionManager:
         if self._resolved_cache is None:
             self._resolved_cache = self._resolve_from_strategy()
         return self._resolved_cache.copy() if self._resolved_cache else None
+
+    def get_cached_password(self) -> Optional[str]:
+        if self._resolved_password:
+            return self._resolved_password
+        cache_data = load_cookie_cache_data(self._cookie_cache_path)
+        if self._auth_method in {"credentials", "login"} and self._username:
+            entry = cache_data.get(self._credentials_cache_key(self._username))
+            if isinstance(entry, dict):
+                password = entry.get("password")
+                if password:
+                    self._resolved_password = str(password)
+                    return self._resolved_password
+        if self._auth_method == "auto":
+            latest_password: Optional[str] = None
+            latest_timestamp: Optional[float] = None
+            for cache_key, entry in cache_data.items():
+                if not cache_key.startswith("credentials::") or not isinstance(entry, dict):
+                    continue
+                password = entry.get("password")
+                timestamp = entry.get("timestamp")
+                try:
+                    timestamp_value = float(timestamp)
+                except (TypeError, ValueError):
+                    continue
+                if time.time() - timestamp_value > self._cookie_cache_ttl:
+                    continue
+                if password and (latest_timestamp is None or timestamp_value > latest_timestamp):
+                    latest_timestamp = timestamp_value
+                    latest_password = str(password)
+            if latest_password:
+                self._resolved_password = latest_password
+                return self._resolved_password
+        return None
 
     def _resolve_from_strategy(self) -> Optional[Dict[str, str]]:
         if self._auth_method in {"none", "skip"}:
@@ -297,7 +331,11 @@ class SessionManager:
             return cached
         fresh = loader()
         if fresh:
-            write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
+            extra_fields: Optional[Dict[str, str]] = None
+            if cache_key.startswith("credentials::") and self._password:
+                extra_fields = {"password": self._password}
+                self._resolved_password = self._password
+            write_cookie_cache(self._cookie_cache_path, cache_key, fresh, extra_fields=extra_fields)
         return fresh
 
     def _read_latest_cached_cookies(self, cache_key_prefix: str) -> Optional[Dict[str, str]]:

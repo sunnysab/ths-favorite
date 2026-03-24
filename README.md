@@ -9,6 +9,7 @@
 
 - 通过同花顺密码或浏览器Cookie登录
 - 获取所有自选股分组数据，并自动附带 selfstock_detail 接口提供的加入价格/时间
+- 获取“我的自选”列表，并支持将其作为虚拟分组并入结果
 - 添加股票到指定自选股分组
 - 从指定自选股分组删除股票
 - 新增或删除自选分组 （by @Kerwin1202）
@@ -66,8 +67,15 @@ from service import PortfolioManager
 
 # 创建实例，自动从浏览器获取 Cookie
 with PortfolioManager() as portfolio:
+    self_group = portfolio.get_self_stocks()
+    print(f"分组: {self_group.name}, ID: {self_group.group_id}")
+    print(f"包含 {len(self_group.items)} 个股票")
+
     # 获取所有分组
     groups = portfolio.get_all_groups()
+
+    # 也可以把“我的自选”并入分组结果
+    groups_with_self = portfolio.get_all_groups(include_self_stocks=True)
     
     # 查看分组内容并打印加入价/时间（来自 selfstock_detail）
     for name, group in groups.items():
@@ -99,10 +107,13 @@ with PortfolioManager() as portfolio:
 # 列出全部分组或查看单个分组
 python main.py list
 python main.py list -g 消费          # 使用 -g 查看指定分组
+python main.py self list            # 查看“我的自选”
 
 # 添加 / 删除股票（代码格式为 CODE.MARKET）
 python main.py stock add 消费 600519.SH
 python main.py stock del 消费 600519.SH
+python main.py stock add 我的自选 600519.SH
+python main.py stock del 我的自选 600519.SH
 
 # 管理和分享分组
 python main.py group add "长线跟踪"
@@ -163,12 +174,26 @@ python main.py group del 消费
 python main.py group share 消费 604800   # 有效期 7 天
 ```
 
+### “我的自选”与分组
+
+项目把“我的自选”作为一个虚拟分组对外暴露：
+
+- 默认名称为 `我的自选`
+- 保留 ID 为 `__selfstock__`
+- 可通过 `get_self_stocks()` 单独获取
+- 也可通过 `get_all_groups(include_self_stocks=True)` 并入全部分组结果
+
+对调用方来说，`stock add/del` 可以直接对 `我的自选` 生效，但其底层协议与普通分组不同，走的是 `my_stock.php` 接口。
+
 ### 自选股价格/时间元数据
 
 `PortfolioManager` 会在每次成功刷新分组数据后调用 `selfstock_detail` 接口，将每个自选股的加入价格 (`StockItem.price`) 与时间 (`StockItem.added_at`) 注入结果。你也可以手动刷新或查看这些信息：
 
 ```python
 with PortfolioManager() as portfolio:
+    self_group = portfolio.get_self_stocks()
+    print(self_group.items[:3])
+
     portfolio.refresh_selfstock_detail(force=True)
     snapshot = portfolio.get_item_snapshot("600519.SH")
     print(snapshot)  # {'code': '600519', 'market': 'SH', 'price': 123.45, 'added_at': '20231101', 'version': '105'}
