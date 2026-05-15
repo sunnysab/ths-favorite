@@ -208,9 +208,13 @@ def download_self_stocks_v2(
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
+    headers = {
+        "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
+    }
     try:
         response = requests.get(
             f"{SELF_STOCK_V2_BASE_URL}{SELF_STOCK_V2_LIST_PATH}",
+            headers=headers,
             cookies=cookies,
             timeout=timeout,
         )
