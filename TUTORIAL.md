@@ -105,8 +105,8 @@ with PortfolioManager(
 | --- | --- | --- |
 | `get_all_groups(use_cache=False)` | 拉取并解析所有分组；`use_cache=True` 时在网络失败时回退到内存缓存。 | `Dict[str, StockGroup]` |
 | `get_self_stocks(refresh=False, name=None)` | 拉取“我的自选”，返回虚拟分组。 | `StockGroup` |
-| `add_item_to_group(group, symbol)` | `group` 可为名称或 ID；`symbol` 需包含市场后缀，如 `000001.SZ`。 | API 返回的字典（含版本信息） |
-| `delete_item_from_group(group, symbol)` | 删除指定股票。 | 同上 |
+| `add_item(group, symbol)` / `add_items(group, symbols)` | 添加单只/多只股票；`symbol` 需含市场后缀如 `000001.SZ`。 | API 返回的字典（含版本信息） |
+| `remove_item(group, symbol)` / `remove_items(group, symbols)` | 删除单只/多只股票。 | 同上 |
 | `add_group(name)` | 新增分组。 | 同上 |
 | `delete_group(group)` | 删除分组（不可恢复，谨慎操作）。 | 同上 |
 | `share_group(group, valid_time)` | 创建分享链接，`valid_time` 为秒。 | `dict`，通常包含 `share_url` |
@@ -135,11 +135,11 @@ with PortfolioManager(
     first_item = groups["消费"].items[0]
     print("加入价格:", first_item.price, "加入时间:", first_item.added_at)
 
-    ths.add_item_to_group("消费", "600519.SH")
-    ths.delete_item_from_group("消费", "000858.SZ")
+    ths.add_item("消费", "600519.SH")
+    ths.remove_item("消费", "000858.SZ")
 
     ths.add_group("长线跟踪")
-    ths.add_item_to_group("长线跟踪", "300750.SZ")
+    ths.add_item("长线跟踪", "300750.SZ")
     share_info = ths.share_group("长线跟踪", 604800)
     print("分享链接:", share_info.get("share_url"))
 ```
@@ -151,7 +151,7 @@ with PortfolioManager(
   from exceptions import THSAPIError, THSNetworkError
 
   try:
-      ths.add_item_to_group("消费", "600519.SH")
+      ths.add_item("消费", "600519.SH")
   except THSNetworkError as exc:
       print("网络异常:", exc)
   except THSAPIError as exc:
