@@ -75,12 +75,6 @@ class PortfolioManager:
             cookie_cache_ttl_seconds=cookie_cache_ttl_seconds,
         )
         resolved_cookies = self._session_manager.resolve()
-        self._auth_params: dict[str, str] | None = None
-        try:
-            self._auth_params = self._session_manager.get_auth_params()
-        except Exception:
-            logger.debug("无法获取 multiStorage 凭据，批量自定义分组操作将不可用。")
-
         if api_client is not None:
             self.api_client = api_client
             self._is_external_api_client = True
@@ -128,9 +122,8 @@ class PortfolioManager:
                 continue
 
             items: list[StockItem] = []
-            is_dynamic = group_id.startswith("1_")
 
-            if is_dynamic:
+            if self._api.is_dynamic_group(group_id):
                 try:
                     entries = self._api.query_dynamic_plate(name)
                     items = [
@@ -175,10 +168,10 @@ class PortfolioManager:
                 items=items,
             )
 
-        _, items = self._api.download_self_stocks()
+        entries = self._api.list_self_stocks()
         self._refresh_selfstock_detail_best_effort(context="获取我的自选")
         parsed_items = [
-            StockItem(code=code, market=market_abbr(market_id)) for code, market_id in items
+            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in entries
         ]
         self._attach_selfstock_metadata(parsed_items)
         group = StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=parsed_items)
@@ -191,60 +184,132 @@ class PortfolioManager:
         return group
 
     def add_item_to_group(self, group_identifier: str, symbol: str | list[str]) -> dict[str, Any]:
+        """Add one or more stocks to a group (backward-compatible)."""
+        if isinstance(symbol, list):
+            return self.add_items(group_identifier, symbol)
+        return self.add_item(group_identifier, symbol)
+
+    def add_item(self, group_identifier: str, symbol: str) -> dict[str, Any]:
+        """Add a single stock to a group."""
         logger.info("尝试添加项目 '{}' 到分组 '{}'...", symbol, group_identifier)
         self._check_group_writable(group_identifier)
-        if isinstance(symbol, list):
-            if not symbol:
-                raise THSAPIError("添加股票", "股票列表不能为空")
-            if self._is_self_stock_identifier(group_identifier):
-                return self._batch_mutate_self_stock(symbol, action="add")
-            return self._batch_mutate_group(group_identifier, symbol, action="add")
+        parsed = self._parse_symbols([symbol])
+        is_self_stock = self._is_self_stock_identifier(group_identifier)
 
-        if self._is_self_stock_identifier(group_identifier):
-            return self._mutate_self_stock(symbol, action="add")
+        if is_self_stock:
+            result = self._api.add_item(
+                group_id=SELF_STOCK_GROUP_ID, symbol=parsed[0], version="",
+                is_self_stock=True,
+            )
+            self.get_self_stocks(refresh=True)
+            return result
+
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("添加股票", f"未能找到分组 '{group_identifier}'")
 
-        item_code, api_item_type = self._parse_symbol(symbol)
-        market_short = market_abbr(api_item_type)
-
         def api_call(version: str) -> dict[str, Any]:
-            return self._api.add_item(target_group_id, item_code, api_item_type, version)
+            return self._api.add_item(target_group_id, parsed[0], version)
 
         def update_cache(_: dict[str, Any]) -> None:
-            self._add_item_to_local_cache(target_group_id, item_code, market_short)
+            self._add_item_to_local_cache(
+                target_group_id, parsed[0].code, market_abbr(parsed[0].market_type),
+            )
 
         return self._perform_write_operation("添加股票", api_call, update_cache)
+
+    def add_items(self, group_identifier: str, symbols: list[str]) -> dict[str, Any]:
+        """Add multiple stocks to a group in one request."""
+        logger.info("尝试批量添加 {} 个项目到分组 '{}'...", len(symbols), group_identifier)
+        self._check_group_writable(group_identifier)
+        parsed = self._parse_symbols(symbols)
+        is_self_stock = self._is_self_stock_identifier(group_identifier)
+
+        if is_self_stock:
+            result = self._api.add_items(
+                group_id=SELF_STOCK_GROUP_ID, symbols=parsed,
+                is_self_stock=True,
+            )
+            self.get_self_stocks(refresh=True)
+            return result
+
+        target_group_id = self._get_group_id_by_identifier(group_identifier)
+        if not target_group_id:
+            raise THSAPIError("添加股票", f"未能找到分组 '{group_identifier}'")
+
+        entry = self._get_group_entry_by_id(target_group_id)
+        group_name = entry[0] if entry else group_identifier
+        result = self._api.add_items(
+            group_id=target_group_id, symbols=parsed,
+            group_name=group_name,
+        )
+        self.get_all_groups(use_cache=False)
+        return result
 
     def delete_item_from_group(
         self, group_identifier: str, symbol: str | list[str]
     ) -> dict[str, Any]:
+        """Remove one or more stocks from a group (backward-compatible)."""
+        if isinstance(symbol, list):
+            return self.remove_items(group_identifier, symbol)
+        return self.remove_item(group_identifier, symbol)
+
+    def remove_item(self, group_identifier: str, symbol: str) -> dict[str, Any]:
+        """Remove a single stock from a group."""
         logger.info("尝试删除项目 '{}' 从分组 '{}'...", symbol, group_identifier)
         self._check_group_writable(group_identifier)
-        if isinstance(symbol, list):
-            if not symbol:
-                raise THSAPIError("删除股票", "股票列表不能为空")
-            if self._is_self_stock_identifier(group_identifier):
-                return self._batch_mutate_self_stock(symbol, action="delete")
-            return self._batch_mutate_group(group_identifier, symbol, action="delete")
+        parsed = self._parse_symbols([symbol])
+        is_self_stock = self._is_self_stock_identifier(group_identifier)
 
-        if self._is_self_stock_identifier(group_identifier):
-            return self._mutate_self_stock(symbol, action="delete")
+        if is_self_stock:
+            result = self._api.remove_item(
+                group_id=SELF_STOCK_GROUP_ID, symbol=parsed[0], version="",
+                is_self_stock=True,
+            )
+            self.get_self_stocks(refresh=True)
+            return result
+
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("删除股票", f"未能找到分组 '{group_identifier}'")
 
-        item_code, api_item_type = self._parse_symbol(symbol)
-        market_short = market_abbr(api_item_type)
-
         def api_call(version: str) -> dict[str, Any]:
-            return self._api.delete_item(target_group_id, item_code, api_item_type, version)
+            return self._api.remove_item(target_group_id, parsed[0], version)
 
         def update_cache(_: dict[str, Any]) -> None:
-            self._remove_item_from_local_cache(target_group_id, item_code, market_short)
+            self._remove_item_from_local_cache(
+                target_group_id, parsed[0].code, market_abbr(parsed[0].market_type),
+            )
 
         return self._perform_write_operation("删除股票", api_call, update_cache)
+
+    def remove_items(self, group_identifier: str, symbols: list[str]) -> dict[str, Any]:
+        """Remove multiple stocks from a group in one request."""
+        logger.info("尝试批量删除 {} 个项目从分组 '{}'...", len(symbols), group_identifier)
+        self._check_group_writable(group_identifier)
+        parsed = self._parse_symbols(symbols)
+        is_self_stock = self._is_self_stock_identifier(group_identifier)
+
+        if is_self_stock:
+            result = self._api.remove_items(
+                group_id=SELF_STOCK_GROUP_ID, symbols=parsed,
+                is_self_stock=True,
+            )
+            self.get_self_stocks(refresh=True)
+            return result
+
+        target_group_id = self._get_group_id_by_identifier(group_identifier)
+        if not target_group_id:
+            raise THSAPIError("删除股票", f"未能找到分组 '{group_identifier}'")
+
+        entry = self._get_group_entry_by_id(target_group_id)
+        group_name = entry[0] if entry else group_identifier
+        result = self._api.remove_items(
+            group_id=target_group_id, symbols=parsed,
+            group_name=group_name,
+        )
+        self.get_all_groups(use_cache=False)
+        return result
 
     def add_group(self, group_name: str) -> dict[str, Any]:
         if not group_name:
@@ -509,7 +574,8 @@ class PortfolioManager:
             return True
         return False
 
-    def _parse_symbol(self, symbol: str) -> tuple[str, str]:
+    @staticmethod
+    def _parse_symbol(symbol: str) -> tuple[str, str]:
         if "." not in symbol:
             raise THSAPIError("解析股票代码", f"股票代码格式无效: '{symbol}'")
         code_part, market_suffix_part = symbol.rsplit(".", 1)
@@ -602,131 +668,12 @@ class PortfolioManager:
             self._self_stock_cache is not None and group_identifier == self._self_stock_cache.name
         )
 
-    def _mutate_self_stock(self, symbol: str, *, action: str) -> dict[str, Any]:
-        current_group = self.get_self_stocks(refresh=False)
-        item_code, api_item_type = self._parse_symbol(symbol)
-        updated_items = list(current_group.items)
-        target_item = StockItem(code=item_code, market=market_abbr(api_item_type))
-        if action == "add":
-            if target_item not in updated_items:
-                updated_items.append(target_item)
-        elif action == "delete":
-            updated_items = [item for item in updated_items if item != target_item]
-        else:
-            raise THSAPIError("我的自选", f"未知操作: {action}")
-
-        result = self._api.upload_self_stocks(
-            op="add" if action == "add" else "del",
-            stockcode=f"{item_code}_{api_item_type}",
-        )
-        self._self_stock_cache = StockGroup(
-            name=SELF_STOCK_DEFAULT_NAME,
-            group_id=SELF_STOCK_GROUP_ID,
-            items=updated_items,
-        )
-        self._persist_self_stock_cache()
-        return result
-
     @staticmethod
     def _parse_symbols(symbols: list[str]) -> list[StockEntry]:
         result: list[StockEntry] = []
         for sym in symbols:
             item_code, api_type = PortfolioManager._parse_symbol(sym)
             result.append(StockEntry(item_code, api_type))
-        return result
-
-    @staticmethod
-    def _merge_entries(
-        current_list: list[StockEntry],
-        parsed_new: list[StockEntry],
-        action: str,
-        context: str = "批量操作",
-    ) -> list[StockEntry]:
-        current_map = {e.code: e for e in current_list}
-        if action == "add":
-            merged = dict(current_map)
-            for e in parsed_new:
-                merged[e.code] = e
-        elif action == "delete":
-            delete_codes = {e.code for e in parsed_new}
-            merged = {c: e for c, e in current_map.items() if c not in delete_codes}
-        else:
-            raise THSAPIError(context, f"未知操作: {action}")
-        return list(merged.values())
-
-    @staticmethod
-    def _entries_to_stock_items(entries: list[StockEntry]) -> list[StockItem]:
-        return [
-            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in entries
-        ]
-
-    def _batch_mutate_self_stock(self, symbols: list[str], *, action: str) -> dict[str, Any]:
-        result = self._api.download_self_stocks_v1()
-        current_list = result.items
-        version = result.version
-
-        parsed_new = self._parse_symbols(symbols)
-        merged_list = self._merge_entries(current_list, parsed_new, action, "我的自选")
-        api_result = self._api.modify_self_stocks_v1(merged_list, version)
-
-        updated_items = self._entries_to_stock_items(merged_list)
-        self._refresh_selfstock_detail_best_effort(context="批量操作")
-        self._attach_selfstock_metadata(updated_items)
-        self._self_stock_cache = StockGroup(
-            name=SELF_STOCK_DEFAULT_NAME,
-            group_id=SELF_STOCK_GROUP_ID,
-            items=updated_items,
-        )
-        self._persist_self_stock_cache()
-        return api_result
-
-    def _batch_mutate_group(
-        self, group_identifier: str, symbols: list[str], *, action: str
-    ) -> dict[str, Any]:
-        if not self._auth_params:
-            raise THSAPIError(
-                "批量操作",
-                "缺少 multiStorage 凭据（sessionid/token），自定义分组的批量操作需要账号密码登录",
-            )
-
-        target_group_id = self._get_group_id_by_identifier(group_identifier)
-        if not target_group_id:
-            raise THSAPIError("批量操作", f"未能找到分组 '{group_identifier}'")
-
-        entry = self._get_group_entry_by_id(target_group_id)
-        if not entry:
-            raise THSAPIError("批量操作", f"未能找到分组 '{group_identifier}' 的缓存数据")
-        group_name, _ = entry
-
-        data = self._api.download_blockstock(self._auth_params)
-        current_version = str(data.version)
-        group_type = 0
-        current_list: list[StockEntry] = []
-
-        for g in data.groups:
-            if g.group_name == group_name:
-                group_type = g.group_type
-                current_list = g.stock_list
-                break
-
-        if group_type == 0 and not current_list:
-            group_type = 0  # new group — server assigns on first upload
-
-        parsed_new = self._parse_symbols(symbols)
-        merged_list = self._merge_entries(current_list, parsed_new, action)
-        result = self._api.upload_blockstock(
-            self._auth_params,
-            group_name=group_name,
-            group_type=group_type,
-            stock_list=merged_list,
-            version=current_version,
-        )
-
-        updated_items = self._entries_to_stock_items(merged_list)
-        self._groups_cache[group_name] = StockGroup(
-            name=group_name, group_id=target_group_id, items=updated_items
-        )
-        self._persist_groups_cache()
         return result
 
 
