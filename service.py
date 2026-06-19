@@ -4,7 +4,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from loguru import logger
 
-from api import FavoriteAPI, download_selfstock_detail
+from api import (
+    FavoriteAPI,
+    download_blockstock,
+    download_self_stocks_v1,
+    download_selfstock_detail,
+    modify_self_stocks_v1,
+    upload_blockstock,
+)
 from auth import SessionManager
 from client import ApiClient
 from config import (
@@ -68,6 +75,11 @@ class PortfolioManager:
             cookie_cache_ttl_seconds=cookie_cache_ttl_seconds,
         )
         resolved_cookies = self._session_manager.resolve()
+        self._auth_params: Optional[Dict[str, str]] = None
+        try:
+            self._auth_params = self._session_manager.get_auth_params()
+        except Exception:
+            logger.debug("无法获取 multiStorage 凭据，批量自定义分组操作将不可用。")
 
         if api_client is not None:
             self.api_client = api_client
@@ -159,8 +171,15 @@ class PortfolioManager:
         save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
         return group
 
-    def add_item_to_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
+    def add_item_to_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
         logger.info("尝试添加项目 '%s' 到分组 '%s'...", symbol, group_identifier)
+        if isinstance(symbol, list):
+            if not symbol:
+                raise THSAPIError("添加股票", "股票列表不能为空")
+            if self._is_self_stock_identifier(group_identifier):
+                return self._batch_mutate_self_stock(symbol, action="add")
+            return self._batch_mutate_group(group_identifier, symbol, action="add")
+
         if self._is_self_stock_identifier(group_identifier):
             return self._mutate_self_stock(symbol, action="add")
         target_group_id = self._get_group_id_by_identifier(group_identifier)
@@ -178,8 +197,15 @@ class PortfolioManager:
 
         return self._perform_write_operation("添加股票", api_call, update_cache)
 
-    def delete_item_from_group(self, group_identifier: str, symbol: str) -> Dict[str, Any]:
+    def delete_item_from_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
         logger.info("尝试删除项目 '%s' 从分组 '%s'...", symbol, group_identifier)
+        if isinstance(symbol, list):
+            if not symbol:
+                raise THSAPIError("删除股票", "股票列表不能为空")
+            if self._is_self_stock_identifier(group_identifier):
+                return self._batch_mutate_self_stock(symbol, action="delete")
+            return self._batch_mutate_group(group_identifier, symbol, action="delete")
+
         if self._is_self_stock_identifier(group_identifier):
             return self._mutate_self_stock(symbol, action="delete")
         target_group_id = self._get_group_id_by_identifier(group_identifier)
@@ -554,6 +580,114 @@ class PortfolioManager:
             items=updated_items,
         )
         self._persist_self_stock_cache()
+        return result
+
+
+    def _batch_mutate_self_stock(self, symbols: List[str], *, action: str) -> Dict[str, Any]:
+        cookies = self.api_client.get_cookies()
+        version, current_list = download_self_stocks_v1(cookies)
+
+        parsed_new: List[Tuple[str, str]] = []
+        for sym in symbols:
+            item_code, api_type = self._parse_symbol(sym)
+            parsed_new.append((item_code, api_type))
+
+        current_map = {code: (code, mtype) for code, mtype in current_list}
+        merged_map: Dict[str, Tuple[str, str]] = {}
+
+        if action == "add":
+            for code, mtype in current_list:
+                merged_map[code] = (code, mtype)
+            for code, mtype in parsed_new:
+                merged_map[code] = (code, mtype)
+        elif action == "delete":
+            delete_codes = {code for code, _ in parsed_new}
+            for code, mtype in current_list:
+                if code not in delete_codes:
+                    merged_map[code] = (code, mtype)
+        else:
+            raise THSAPIError("我的自选", f"未知操作: {action}")
+
+        merged_list = list(merged_map.values())
+        result = modify_self_stocks_v1(cookies, merged_list, version)
+
+        updated_items = [StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list]
+        self._self_stock_cache = StockGroup(
+            name=SELF_STOCK_DEFAULT_NAME,
+            group_id=SELF_STOCK_GROUP_ID,
+            items=updated_items,
+        )
+        self._persist_self_stock_cache()
+        return result
+
+    @staticmethod
+    def _derive_group_type(group_name: str) -> int:
+        import hashlib
+        h = hashlib.md5(group_name.encode("gbk")).digest()
+        return (h[0] << 8 | h[1]) % 500
+
+    def _batch_mutate_group(self, group_identifier: str, symbols: List[str], *, action: str) -> Dict[str, Any]:
+        if not self._auth_params:
+            raise THSAPIError("批量操作", "缺少 multiStorage 凭据（sessionid/token），自定义分组的批量操作需要账号密码登录")
+
+        target_group_id = self._get_group_id_by_identifier(group_identifier)
+        if not target_group_id:
+            raise THSAPIError("批量操作", f"未能找到分组 '{group_identifier}'")
+
+        entry = self._get_group_entry_by_id(target_group_id)
+        if not entry:
+            raise THSAPIError("批量操作", f"未能找到分组 '{group_identifier}' 的缓存数据")
+        group_name, _ = entry
+
+        data = download_blockstock(self._auth_params, self.api_client.get_cookies())
+        groups = data.get("groups", [])
+        current_version = str(data.get("version", ""))
+        group_type = 0
+        current_list: List[Tuple[str, str]] = []
+
+        for g in groups:
+            if g.get("group_name") == group_name:
+                group_type = g.get("group_type", 0)
+                current_list = g.get("stock_list", [])
+                break
+
+        if group_type == 0 and not current_list:
+            group_type = self._derive_group_type(group_name)
+
+        parsed_new: List[Tuple[str, str]] = []
+        for sym in symbols:
+            item_code, api_type = self._parse_symbol(sym)
+            parsed_new.append((item_code, api_type))
+
+        current_map = {code: (code, mtype) for code, mtype in current_list}
+        merged_map: Dict[str, Tuple[str, str]] = {}
+
+        if action == "add":
+            for code, mtype in current_list:
+                merged_map[code] = (code, mtype)
+            for code, mtype in parsed_new:
+                merged_map[code] = (code, mtype)
+        elif action == "delete":
+            delete_codes = {code for code, _ in parsed_new}
+            for code, mtype in current_list:
+                if code not in delete_codes:
+                    merged_map[code] = (code, mtype)
+        else:
+            raise THSAPIError("批量操作", f"未知操作: {action}")
+
+        merged_list = list(merged_map.values())
+        result = upload_blockstock(
+            self._auth_params,
+            self.api_client.get_cookies(),
+            group_name=group_name,
+            group_type=group_type,
+            stock_list=merged_list,
+            version=current_version,
+        )
+
+        updated_items = [StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list]
+        self._groups_cache[group_name] = StockGroup(name=group_name, group_id=target_group_id, items=updated_items)
+        self._persist_groups_cache()
         return result
 
 

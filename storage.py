@@ -169,6 +169,25 @@ def read_cached_cookies(cache_path: str, cache_key: str, ttl_seconds: int) -> Op
     return None
 
 
+def read_cached_auth_params(cache_path: str, cache_key: str, ttl_seconds: int) -> Optional[Dict[str, str]]:
+    """Return cached multiStorage auth params when still valid."""
+    cache_data = load_cookie_cache_data(cache_path)
+    entry = cache_data.get(cache_key)
+    if not entry:
+        return None
+    timestamp = entry.get("timestamp")
+    try:
+        timestamp_value = float(timestamp)
+    except (TypeError, ValueError):
+        return None
+    if time.time() - timestamp_value > ttl_seconds:
+        return None
+    auth = entry.get("auth_params")
+    if isinstance(auth, dict) and auth:
+        return {str(k): str(v) for k, v in auth.items()}
+    return None
+
+
 def write_cookie_cache(
     cache_path: str,
     cache_key: str,

@@ -15,6 +15,16 @@ SELF_STOCK_V2_BASE_URL: str = "https://t.10jqka.com.cn"
 SELF_STOCK_V2_LIST_PATH: str = "/newcircle/group/getSelfStockWithMarket/"
 SELF_STOCK_V2_MODIFY_PATH: str = "/newcircle/group/modifySelfStock/"
 
+# Self-stock v1 (batch) API — operates on "我的自选" via full-replace
+SELF_STOCK_V1_BASE_URL: str = "https://ugc.10jqka.com.cn"
+SELF_STOCK_V1_QUERY_PATH: str = "/optdata/selfstock/open/api/v1/query"
+SELF_STOCK_V1_MODIFY_PATH: str = "/optdata/selfstock/open/api/v1/modify"
+
+# multiStorage blockstock API — operates on all groups (我的自选 + custom)
+MULTI_STORAGE_URL: str = "https://cs.10jqka.com.cn/multiStorage"
+BLOCKSTOCK_APPNAME: str = "blockstock"
+MULTI_STORAGE_DEFAULT_CLIENTTYPE: str = "hevo_pc"
+
 ENDPOINTS = {
     "query_groups": "/optdata/selfgroup/open/api/group/v1/query",
     "add_item": "/optdata/selfgroup/open/api/content/v1/add",

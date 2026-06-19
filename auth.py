@@ -16,6 +16,7 @@ import json
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Callable, Dict, Optional, Union
 
 import requests
@@ -27,6 +28,7 @@ from cookie import parse_cookie_header, parse_cookie_string
 from exceptions import THSAPIError, THSNetworkError
 from storage import (
     load_cookie_cache_data,
+    read_cached_auth_params,
     read_cached_cookies,
     write_cookie_cache,
 )
@@ -228,6 +230,7 @@ class SessionManager:
         self._cookie_cache_ttl = cookie_cache_ttl_seconds
         self._login_factory = login_factory or create_session
         self._resolved_cache: Optional[Dict[str, str]] = None
+        self._last_session_result: Optional[SessionResult] = None
 
     def resolve(self) -> Optional[Dict[str, str]]:
         if self._explicit_cookies is not None:
@@ -235,6 +238,72 @@ class SessionManager:
         if self._resolved_cache is None:
             self._resolved_cache = self._resolve_from_inputs()
         return self._resolved_cache.copy() if self._resolved_cache else None
+
+    def get_auth_params(self) -> Dict[str, str]:
+        sr = self._last_session_result
+        if sr:
+            expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
+            return {
+                "userid": sr.userid,
+                "sessionid": sr.sessionid,
+                "expires": expires,
+            }
+
+        if self._username:
+            key = self._credentials_cache_key(self._username)
+            cached = read_cached_auth_params(self._cookie_cache_path, key, self._cookie_cache_ttl)
+            if cached:
+                return cached
+
+        cache_data = load_cookie_cache_data(self._cookie_cache_path)
+        latest_cached: Optional[Dict[str, str]] = None
+        latest_ts = 0.0
+        for cache_key, entry in cache_data.items():
+            if not cache_key.startswith("credentials::"):
+                continue
+            ts = entry.get("timestamp", 0)
+            try:
+                ts_value = float(ts)
+            except (TypeError, ValueError):
+                continue
+            if time.time() - ts_value > self._cookie_cache_ttl:
+                continue
+            ap = entry.get("auth_params")
+            if isinstance(ap, dict) and ap and ts_value > latest_ts:
+                latest_ts = ts_value
+                latest_cached = {str(k): str(v) for k, v in ap.items()}
+        if latest_cached:
+            return latest_cached
+
+        return self._extract_sessionid_from_cookies(cache_data)
+
+    def _extract_sessionid_from_cookies(self, cache_data: Dict[str, Any]) -> Dict[str, str]:
+        import base64 as _b64
+        import urllib.parse as _urlparse
+
+        userid = ""
+        sessionid = ""
+        for _k, entry in cache_data.items():
+            cookies = entry.get("cookies", {}) if isinstance(entry, dict) else {}
+            userid = str(cookies.get("userid", ""))
+            user_raw = cookies.get("user", "")
+            if user_raw:
+                try:
+                    decoded = _urlparse.unquote(user_raw)
+                    text = _b64.b64decode(decoded).decode("utf-8", errors="replace")
+                    parts = text.split(":")
+                    if len(parts) > 17:
+                        sessionid = parts[17]
+                except Exception:
+                    pass
+            if userid:
+                break
+
+        if not userid:
+            raise THSAPIError("认证", "multiStorage 需要有效的登录凭据，请先登录")
+
+        expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
+        return {"userid": userid, "sessionid": sessionid, "expires": expires}
 
     def _resolve_from_inputs(self) -> Optional[Dict[str, str]]:
         if self._username is None and self._password is None:
@@ -282,7 +351,21 @@ class SessionManager:
         return fresh
 
     def _load_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
+        cache_key = self._credentials_cache_key(username)
         session = self._login_factory(username, password)
+        self._last_session_result = session
+        expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
+        auth_params = {
+            "userid": session.userid,
+            "sessionid": session.sessionid,
+            "expires": expires,
+        }
+        write_cookie_cache(
+            self._cookie_cache_path,
+            cache_key,
+            session.cookies,
+            extra_fields={"auth_params": auth_params},
+        )
         return session.cookies
 
     def _read_latest_cached_cookies(self, cache_key_prefix: str) -> Optional[Dict[str, str]]:

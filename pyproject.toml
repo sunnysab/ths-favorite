@@ -11,11 +11,12 @@ authors = [
 ]
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 
 dependencies = [
     "loguru",
     "cryptography",
+    "protobuf>=5.0",
     "requests",
 ]
 
