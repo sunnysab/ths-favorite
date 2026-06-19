@@ -23,6 +23,10 @@ MULTI_STORAGE_URL: str = "https://cs.10jqka.com.cn/multiStorage"
 BLOCKSTOCK_APPNAME: str = "blockstock"
 MULTI_STORAGE_DEFAULT_CLIENTTYPE: str = "hevo_pc"
 
+# Dynamic plate API — queries stocks in 同花顺 concept/sector plates (1_ groups)
+DYNAMIC_PLATE_BASE_URL: str = "https://apigate.10jqka.com.cn"
+DYNAMIC_PLATE_SELECT_PATH: str = "/d/platform/dynamicplate/stocks/self/v2/select"
+
 ENDPOINTS = {
     "query_groups": "/optdata/selfgroup/open/api/group/v1/query",
     "add_item": "/optdata/selfgroup/open/api/content/v1/add",

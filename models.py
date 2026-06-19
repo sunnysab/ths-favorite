@@ -40,6 +40,7 @@ class StockGroup:
     name: str
     group_id: str
     items: list[StockItem] = field(default_factory=list)
+    readonly: bool = False
 
     def __repr__(self) -> str:
         return (

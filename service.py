@@ -127,14 +127,27 @@ class PortfolioManager:
                 continue
 
             items: list[StockItem] = []
-            for detail in group_raw.get("item_details", []):
-                item_code: str | None = detail.get("code")
-                api_type: str | None = detail.get("api_type")
-                market_short = market_abbr(api_type) if api_type else None
-                if item_code:
-                    items.append(StockItem(code=item_code, market=market_short))
-            self._attach_selfstock_metadata(items)
-            formatted[name] = StockGroup(name=name, group_id=group_id, items=items)
+            is_dynamic = group_id.startswith("1_")
+
+            if is_dynamic:
+                try:
+                    entries = self._api.query_dynamic_plate(name)
+                    items = [
+                        StockItem(code=e.code, market=market_abbr(e.market_type))
+                        for e in entries
+                    ]
+                except Exception:
+                    logger.warning("获取动态分组 '{}' 失败，返回空列表。", name)
+                formatted[name] = StockGroup(name=name, group_id=group_id, items=items, readonly=True)
+            else:
+                for detail in group_raw.get("item_details", []):
+                    item_code: str | None = detail.get("code")
+                    api_type: str | None = detail.get("api_type")
+                    market_short = market_abbr(api_type) if api_type else None
+                    if item_code:
+                        items.append(StockItem(code=item_code, market=market_short))
+                self._attach_selfstock_metadata(items)
+                formatted[name] = StockGroup(name=name, group_id=group_id, items=items)
 
         self._groups_cache = formatted
         save_groups_cache(self._group_cache_path, formatted)
@@ -175,6 +188,7 @@ class PortfolioManager:
 
     def add_item_to_group(self, group_identifier: str, symbol: str | list[str]) -> dict[str, Any]:
         logger.info("尝试添加项目 '{}' 到分组 '{}'...", symbol, group_identifier)
+        self._check_group_writable(group_identifier)
         if isinstance(symbol, list):
             if not symbol:
                 raise THSAPIError("添加股票", "股票列表不能为空")
@@ -203,6 +217,7 @@ class PortfolioManager:
         self, group_identifier: str, symbol: str | list[str]
     ) -> dict[str, Any]:
         logger.info("尝试删除项目 '{}' 从分组 '{}'...", symbol, group_identifier)
+        self._check_group_writable(group_identifier)
         if isinstance(symbol, list):
             if not symbol:
                 raise THSAPIError("删除股票", "股票列表不能为空")
@@ -382,6 +397,13 @@ class PortfolioManager:
         exc_tb: Any | None,
     ) -> None:
         self.close()
+
+    def _check_group_writable(self, group_identifier: str) -> None:
+        if group_identifier == SELF_STOCK_GROUP_ID or group_identifier == SELF_STOCK_DEFAULT_NAME:
+            return
+        target_id = self._get_group_id_by_identifier(group_identifier)
+        if target_id and target_id.startswith("1_"):
+            raise THSAPIError("操作拒绝", f"动态分组 '{group_identifier}' 为只读，不能手动增删股票")
 
     def _get_group_id_by_identifier(self, group_identifier: str) -> str | None:
         if not self._groups_cache:

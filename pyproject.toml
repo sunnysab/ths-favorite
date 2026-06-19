@@ -49,6 +49,7 @@ py-modules = [
     "api",
     "auth",
     "blockstock",
+    "dynamicplate",
     "client",
     "config",
     "constant",

@@ -14,6 +14,7 @@ from config import (
     GROUP_QUERY_TYPES,
 )
 from exceptions import THSAPIError, THSNetworkError
+from dynamicplate import query_dynamic_plate as _query_dynamic_plate
 from models import BlockstockDownload, StockEntry, StockListVersion
 
 # Re-export protocol modules for backwards compatibility
@@ -152,6 +153,9 @@ class FavoriteAPI:
             auth_params, self._client.get_cookies(),
             group_name, group_type, stock_list, version,
         )
+
+    def query_dynamic_plate(self, group_name: str) -> list[StockEntry]:
+        return _query_dynamic_plate(group_name, self._client.get_cookies())
 
     def _post_with_version(
         self,
