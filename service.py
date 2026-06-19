@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -456,7 +454,7 @@ class PortfolioManager:
             self.api_client.close()
         logger.info("PortfolioManager 服务已关闭。")
 
-    def __enter__(self) -> PortfolioManager:
+    def __enter__(self) -> "PortfolioManager":
         return self
 
     def __exit__(

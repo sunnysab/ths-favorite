@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 class THSError(Exception):
     """Base exception for all custom THS-related errors."""

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 _PB_WIRETYPE_VARINT = 0
 _PB_WIRETYPE_LEN = 2
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -48,7 +46,7 @@ class StockGroup:
             f"group_id='{self.group_id}', items_count={len(self.items)})"
         )
 
-    def diff(self, other: StockGroup) -> tuple[list[StockItem], list[StockItem]]:
+    def diff(self, other: "StockGroup") -> tuple[list[StockItem], list[StockItem]]:
         if not isinstance(other, StockGroup):
             logger.error(
                 "类型错误: 比较对象 'other' 必须是 StockGroup 类型，而非 {}。",

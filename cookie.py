@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 def parse_cookie_string(raw: str) -> dict[str, str]:
     """Parse a ``Cookie`` header string into a dictionary."""

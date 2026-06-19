@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 DEFAULT_HEADERS: dict[str, str] = {
     "User-Agent": (
         "Hexin_Gphone/11.28.03 (Royal Flush) hxtheme/0 innerversion/G037.09.028.1.32 "

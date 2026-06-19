@@ -10,7 +10,6 @@ TEST_GROUP_NAME = "test_batch"
 def main() -> None:
     with PortfolioManager() as pm:
         # ── Before: show what we have ──
-        groups_before = pm.get_all_groups(include_self_stocks=True, use_cache=False)
         self_before = pm.get_self_stocks(refresh=True)
 
         print("══════ 我的自选 (before) ══════")
