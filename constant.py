@@ -28,7 +28,8 @@ def market_abbr(market_type: str) -> str:
     """
     将市场类型代码映射为对应的名称缩写
     """
-    assert market_type
+    if not market_type:
+        raise ValueError("market_type must be a non-empty string")
     return __MARKET_NAME.get(market_type, market_type)
 
 
@@ -36,5 +37,6 @@ def market_code(market_abbr: str) -> str:
     """
     将市场类型缩写映射为对应的代码
     """
-    assert market_abbr
+    if not market_abbr:
+        raise ValueError("market_abbr must be a non-empty string")
     return __MARKET_CODE.get(market_abbr.upper(), market_abbr)
