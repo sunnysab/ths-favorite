@@ -34,8 +34,7 @@ ENDPOINTS = {
     'share_group': '/optdata/sharing_service/open/api/sharing/v1/create',
 }
 
-GROUP_CACHE_FILE: str = 'ths_favorite_cache.json'
-SELF_STOCK_CACHE_FILE: str = 'ths_self_stock_cache.json'
+CACHE_FILE: str = 'ths_favorite_cache.json'
 COOKIE_CACHE_FILE: str = 'ths_cookie_cache.json'
 COOKIE_CACHE_TTL_SECONDS: int = 24 * 60 * 60
 SELF_STOCK_GROUP_ID: str = '__selfstock__'

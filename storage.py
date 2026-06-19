@@ -8,26 +8,31 @@ from loguru import logger
 from models import StockGroup, StockItem
 
 
-def load_groups_cache(cache_file: str) -> dict[str, StockGroup]:
-    """Load cached groups from disk into StockGroup instances."""
+def load_cache(cache_file: str) -> tuple[dict[str, StockGroup], StockGroup | None]:
+    """Load cached groups and self stock from disk.
 
-    logger.info(f"尝试从文件 '{cache_file}' 加载分组缓存...")
+    Returns (groups, self_stock).
+    Both are empty/None when the cache file does not exist or is corrupt.
+    """
+
+    logger.info(f"尝试从文件 '{cache_file}' 加载缓存...")
     if not os.path.exists(cache_file):
         logger.info(f"缓存文件 '{cache_file}' 不存在，跳过加载。")
-        return {}
+        return {}, None
 
     try:
         with open(cache_file, encoding='utf-8') as fp:
-            cached_groups_data: list[dict[str, Any]] = json.load(fp)
+            root: dict[str, Any] = json.load(fp)
     except json.JSONDecodeError:
         logger.error(f"错误: 缓存文件 '{cache_file}' 内容不是有效的JSON格式。缓存未加载。")
-        return {}
+        return {}, None
     except Exception:
         logger.exception('从文件加载缓存时发生未知错误。')
-        return {}
+        return {}, None
 
+    groups_data: list[dict[str, Any]] = root.get('groups', []) if isinstance(root, dict) else []
     groups: dict[str, StockGroup] = {}
-    for group_data in cached_groups_data:
+    for group_data in groups_data:
         items: list[StockItem] = [
             StockItem(code=item_dict['code'], market=item_dict.get('market'))
             for item_dict in group_data.get('items', [])
@@ -40,77 +45,67 @@ def load_groups_cache(cache_file: str) -> dict[str, StockGroup]:
             continue
         groups[group_name] = StockGroup(name=group_name, group_id=group_id, items=items)
 
-    logger.info(f"已从 '{cache_file}' 加载 {len(groups)} 个分组到缓存。")
-    return groups
+    self_stock_data: dict[str, Any] | None = root.get('self_stock') if isinstance(root, dict) else None
+    self_stock: StockGroup | None = None
+    if isinstance(self_stock_data, dict):
+        self_stock_items: list[StockItem] = [
+            StockItem(code=item_dict['code'], market=item_dict.get('market'))
+            for item_dict in self_stock_data.get('items', [])
+            if item_dict.get('code')
+        ]
+        group_name = self_stock_data.get('name')
+        group_id = self_stock_data.get('group_id')
+        if group_name and group_id:
+            self_stock = StockGroup(name=group_name, group_id=group_id, items=self_stock_items)
+
+    logger.info(
+        f"已从 '{cache_file}' 加载 {len(groups)} 个分组"
+        + (f"，自选股「{self_stock.name}」" if self_stock else "，无自选股缓存")
+        + "。"
+    )
+    return groups, self_stock
 
 
-def save_groups_cache(cache_file: str, groups: dict[str, StockGroup]) -> None:
-    """Persist in-memory groups onto disk for faster warm start."""
+def save_cache(
+    cache_file: str,
+    groups: dict[str, StockGroup],
+    self_stock: StockGroup | None,
+) -> None:
+    """Persist groups and self stock into a single cache file."""
 
-    logger.info(f"尝试将 {len(groups)} 个分组保存到缓存文件 '{cache_file}'...")
+    serializable: dict[str, Any] = {}
+
+    serializable['groups'] = [
+        {
+            'name': group_obj.name,
+            'group_id': group_obj.group_id,
+            'items': [
+                {'code': item.code, 'market': item.market} for item in group_obj.items
+            ],
+        }
+        for group_obj in groups.values()
+    ]
+
+    if self_stock is not None:
+        serializable['self_stock'] = {
+            'name': self_stock.name,
+            'group_id': self_stock.group_id,
+            'items': [
+                {'code': item.code, 'market': item.market} for item in self_stock.items
+            ],
+        }
+
+    logger.info(
+        f"尝试将 {len(serializable['groups'])} 个分组"
+        + (" 及自选股" if self_stock else "")
+        + f" 保存到缓存文件 '{cache_file}'..."
+    )
     try:
-        serializable: list[dict[str, Any]] = []
-        for group_obj in groups.values():
-            serializable.append(
-                {
-                    'name': group_obj.name,
-                    'group_id': group_obj.group_id,
-                    'items': [
-                        {'code': item.code, 'market': item.market} for item in group_obj.items
-                    ],
-                }
-            )
-
         with open(cache_file, 'w', encoding='utf-8') as fp:
             json.dump(serializable, fp, ensure_ascii=False, indent=2)
-        logger.info(f"已成功将 {len(serializable)} 个分组保存到缓存文件 '{cache_file}'。")
+        logger.info(f"已成功保存缓存到 '{cache_file}'。")
     except Exception:
         logger.exception('保存缓存到文件时发生错误。')
-
-
-def load_self_stock_cache(cache_file: str) -> StockGroup | None:
-    logger.info(f"尝试从文件 '{cache_file}' 加载我的自选缓存...")
-    if not os.path.exists(cache_file):
-        logger.info(f"缓存文件 '{cache_file}' 不存在，跳过加载。")
-        return None
-
-    try:
-        with open(cache_file, encoding='utf-8') as fp:
-            cached_group_data: dict[str, Any] = json.load(fp)
-    except json.JSONDecodeError:
-        logger.error(f"错误: 缓存文件 '{cache_file}' 内容不是有效的JSON格式。缓存未加载。")
-        return None
-    except Exception:
-        logger.exception('从文件加载我的自选缓存时发生未知错误。')
-        return None
-
-    if not isinstance(cached_group_data, dict):
-        return None
-
-    items: list[StockItem] = [
-        StockItem(code=item_dict['code'], market=item_dict.get('market'))
-        for item_dict in cached_group_data.get('items', [])
-        if item_dict.get('code')
-    ]
-    group_name: str | None = cached_group_data.get('name')
-    group_id: str | None = cached_group_data.get('group_id')
-    if not group_name or not group_id:
-        return None
-    return StockGroup(name=group_name, group_id=group_id, items=items)
-
-
-def save_self_stock_cache(cache_file: str, group: StockGroup) -> None:
-    logger.info(f"尝试将我的自选缓存保存到 '{cache_file}'...")
-    try:
-        serializable = {
-            'name': group.name,
-            'group_id': group.group_id,
-            'items': [{'code': item.code, 'market': item.market} for item in group.items],
-        }
-        with open(cache_file, 'w', encoding='utf-8') as fp:
-            json.dump(serializable, fp, ensure_ascii=False, indent=2)
-    except Exception:
-        logger.exception('保存我的自选缓存到文件时发生错误。')
 
 
 def load_cookie_cache_data(cache_path: str) -> dict[str, Any]:
