@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from loguru import logger
@@ -573,17 +574,20 @@ class PortfolioManager:
     def _attach_selfstock_metadata(self, favorites: list[StockItem]) -> None:
         if not self._selfstock_detail_map:
             return
-        for item in favorites:
+        for i, item in enumerate(favorites):
             market_key = (item.market or "").upper()
             meta = self._selfstock_detail_map.get((item.code, market_key))
             if meta is None:
                 meta = self._selfstock_detail_map.get((item.code, ""))
             if not meta:
                 continue
+            kwargs: dict[str, object] = {}
             if meta.get("price") is not None:
-                object.__setattr__(item, "price", meta["price"])
+                kwargs["price"] = meta["price"]
             if meta.get("timestamp"):
-                object.__setattr__(item, "added_at", meta["timestamp"])
+                kwargs["added_at"] = meta["timestamp"]
+            if kwargs:
+                favorites[i] = replace(item, **kwargs)
 
     @staticmethod
     def _detail_key(code: str, market_short: str | None) -> tuple[str, str]:
@@ -623,35 +627,49 @@ class PortfolioManager:
         self._persist_self_stock_cache()
         return result
 
+    @staticmethod
+    def _parse_symbols(symbols: list[str]) -> list[StockEntry]:
+        result: list[StockEntry] = []
+        for sym in symbols:
+            item_code, api_type = PortfolioManager._parse_symbol(sym)
+            result.append(StockEntry(item_code, api_type))
+        return result
+
+    @staticmethod
+    def _merge_entries(
+        current_list: list[StockEntry],
+        parsed_new: list[StockEntry],
+        action: str,
+        context: str = "批量操作",
+    ) -> list[StockEntry]:
+        current_map = {e.code: e for e in current_list}
+        if action == "add":
+            merged = dict(current_map)
+            for e in parsed_new:
+                merged[e.code] = e
+        elif action == "delete":
+            delete_codes = {e.code for e in parsed_new}
+            merged = {c: e for c, e in current_map.items() if c not in delete_codes}
+        else:
+            raise THSAPIError(context, f"未知操作: {action}")
+        return list(merged.values())
+
+    @staticmethod
+    def _entries_to_stock_items(entries: list[StockEntry]) -> list[StockItem]:
+        return [
+            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in entries
+        ]
+
     def _batch_mutate_self_stock(self, symbols: list[str], *, action: str) -> dict[str, Any]:
         result = self._api.download_self_stocks_v1()
         current_list = result.items
         version = result.version
 
-        parsed_new: list[StockEntry] = []
-        for sym in symbols:
-            item_code, api_type = self._parse_symbol(sym)
-            parsed_new.append(StockEntry(item_code, api_type))
-
-        current_map = {e.code: e for e in current_list}
-        merged_map: dict[str, StockEntry] = {}
-
-        if action == "add":
-            merged_map.update(current_map)
-            for e in parsed_new:
-                merged_map[e.code] = e
-        elif action == "delete":
-            delete_codes = {e.code for e in parsed_new}
-            merged_map = {code: e for code, e in current_map.items() if code not in delete_codes}
-        else:
-            raise THSAPIError("我的自选", f"未知操作: {action}")
-
-        merged_list = list(merged_map.values())
+        parsed_new = self._parse_symbols(symbols)
+        merged_list = self._merge_entries(current_list, parsed_new, action, "我的自选")
         api_result = self._api.modify_self_stocks_v1(merged_list, version)
 
-        updated_items = [
-            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in merged_list
-        ]
+        updated_items = self._entries_to_stock_items(merged_list)
         self._refresh_selfstock_detail_best_effort(context="批量操作")
         self._attach_selfstock_metadata(updated_items)
         self._self_stock_cache = StockGroup(
@@ -694,25 +712,8 @@ class PortfolioManager:
         if group_type == 0 and not current_list:
             group_type = 0  # new group — server assigns on first upload
 
-        parsed_new: list[StockEntry] = []
-        for sym in symbols:
-            item_code, api_type = self._parse_symbol(sym)
-            parsed_new.append(StockEntry(item_code, api_type))
-
-        current_map = {e.code: e for e in current_list}
-        merged_map: dict[str, StockEntry] = {}
-
-        if action == "add":
-            merged_map.update(current_map)
-            for e in parsed_new:
-                merged_map[e.code] = e
-        elif action == "delete":
-            delete_codes = {e.code for e in parsed_new}
-            merged_map = {code: e for code, e in current_map.items() if code not in delete_codes}
-        else:
-            raise THSAPIError("批量操作", f"未知操作: {action}")
-
-        merged_list = list(merged_map.values())
+        parsed_new = self._parse_symbols(symbols)
+        merged_list = self._merge_entries(current_list, parsed_new, action)
         result = self._api.upload_blockstock(
             self._auth_params,
             group_name=group_name,
@@ -721,9 +722,7 @@ class PortfolioManager:
             version=current_version,
         )
 
-        updated_items = [
-            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in merged_list
-        ]
+        updated_items = self._entries_to_stock_items(merged_list)
         self._groups_cache[group_name] = StockGroup(
             name=group_name, group_id=target_group_id, items=updated_items
         )
