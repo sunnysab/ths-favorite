@@ -13,6 +13,10 @@ from exceptions import THSNetworkError
 
 TApiClient = TypeVar("TApiClient", bound="ApiClient")
 
+# Shared session for protocol-level requests (connection pooling, no cookie state).
+# Each call still passes explicit cookies= — this session only provides TCP reuse.
+SHARED_SESSION = Session()
+
 
 class ApiClient:
     """负责底层 HTTP 请求、Cookie 管理与通用错误处理的客户端。"""

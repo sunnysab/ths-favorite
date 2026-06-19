@@ -9,7 +9,7 @@ import requests
 # Re-export protocol modules for backwards compatibility
 from blockstock import download_blockstock as _download_blockstock
 from blockstock import upload_blockstock as _upload_blockstock
-from client import ApiClient
+from client import SHARED_SESSION, ApiClient
 from config import (
     DEFAULT_FROM_PARAM,
     DEFAULT_HEADERS,
@@ -202,7 +202,7 @@ def download_selfstock_detail(
         "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
     }
     try:
-        response = requests.get(
+        response = SHARED_SESSION.get(
             SELFSTOCK_DETAIL_API_URL,
             params=params,
             headers=headers,

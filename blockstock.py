@@ -6,6 +6,7 @@ from typing import Any
 import requests
 
 from _protobuf import decode_varint, field_bytes, field_varint
+from client import SHARED_SESSION
 from config import (
     BLOCKSTOCK_APPNAME,
     DEFAULT_HEADERS,
@@ -172,7 +173,7 @@ def download_blockstock(
         "Content-Type": "application/x-www-form-urlencoded",
     }
     try:
-        response = requests.post(
+        response = SHARED_SESSION.post(
             MULTI_STORAGE_URL,
             data=data,
             headers=headers,
@@ -216,7 +217,7 @@ def upload_blockstock(
     headers = {"User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo")}
 
     try:
-        response = requests.post(
+        response = SHARED_SESSION.post(
             MULTI_STORAGE_URL,
             data=data,
             files=files,

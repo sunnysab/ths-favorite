@@ -4,6 +4,7 @@ from typing import Any
 
 import requests
 
+from client import SHARED_SESSION
 from config import (
     DEFAULT_HEADERS,
     SELF_STOCK_HTTP_TIMEOUT,
@@ -32,7 +33,7 @@ def download_self_stocks_v2(
         "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
     }
     try:
-        response = requests.get(
+        response = SHARED_SESSION.get(
             f"{SELF_STOCK_V2_BASE_URL}{SELF_STOCK_V2_LIST_PATH}",
             headers=headers,
             cookies=cookies,
@@ -65,7 +66,7 @@ def modify_self_stock_v2(
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> dict[str, Any]:
     try:
-        response = requests.get(
+        response = SHARED_SESSION.get(
             f"{SELF_STOCK_V2_BASE_URL}{SELF_STOCK_V2_MODIFY_PATH}",
             params={"op": op, "stockcode": stockcode},
             cookies=cookies,

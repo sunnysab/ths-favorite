@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 import requests
 
+from client import SHARED_SESSION
 from config import (
     DEFAULT_HEADERS,
     SELF_STOCK_HTTP_TIMEOUT,
@@ -27,7 +28,7 @@ def download_self_stocks_v1(
         headers["userid"] = userid
     params: dict[str, str] = {"support_all": "0", "from": "thspc_hevo"}
     try:
-        response = requests.get(
+        response = SHARED_SESSION.get(
             f"{SELF_STOCK_V1_BASE_URL}{SELF_STOCK_V1_QUERY_PATH}",
             params=params,
             headers=headers,
@@ -85,7 +86,7 @@ def modify_self_stocks_v1(
     if userid:
         headers["userid"] = userid
     try:
-        response = requests.post(
+        response = SHARED_SESSION.post(
             f"{SELF_STOCK_V1_BASE_URL}{SELF_STOCK_V1_MODIFY_PATH}",
             data=encoded,
             headers=headers,

@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 import requests
 
+from client import SHARED_SESSION
 from config import (
     DEFAULT_HEADERS,
     DYNAMIC_PLATE_BASE_URL,
@@ -27,7 +28,7 @@ def query_dynamic_plate(
     )
     headers = {"User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo")}
     try:
-        response = requests.get(url, headers=headers, cookies=cookies, timeout=timeout)
+        response = SHARED_SESSION.get(url, headers=headers, cookies=cookies, timeout=timeout)
         response.raise_for_status()
     except requests.RequestException as exc:
         raise THSNetworkError("动态分组", str(exc)) from exc
