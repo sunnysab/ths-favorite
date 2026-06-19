@@ -123,15 +123,7 @@ class PortfolioManager:
             items: list[StockItem] = []
 
             if self._api.is_dynamic_group(group_id):
-                try:
-                    entries = self._api.query_dynamic_plate(name)
-                    items = [
-                        StockItem(code=e.code, market=market_abbr(e.market_type))
-                        for e in entries
-                    ]
-                except Exception:
-                    logger.warning("获取动态分组 '{}' 失败，返回空列表。", name)
-                formatted[name] = StockGroup(name=name, group_id=group_id, items=items, readonly=True)
+                formatted[name] = StockGroup(name=name, group_id=group_id, items=[], readonly=True)
             else:
                 for detail in group_raw.get('item_details', []):
                     item_code: str | None = detail.get('code')
@@ -144,7 +136,8 @@ class PortfolioManager:
 
         self._groups_cache = formatted
         if self._enable_cache:
-            save_cache(self._cache_path, formatted, self._self_stock_cache)
+            cacheable = {n: g for n, g in formatted.items() if not g.readonly}
+            save_cache(self._cache_path, cacheable, self._self_stock_cache)
         merged = formatted.copy()
         if include_self_stocks:
             self_group = self.get_self_stocks(refresh=False, name=self_stocks_name)
@@ -181,7 +174,7 @@ class PortfolioManager:
             items=list(parsed_items),
         )
         if self._enable_cache:
-            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
+            self._persist_cache()
         return group
 
     def add_item_to_group(self, group_identifier: str, symbol: str | list[str]) -> dict[str, Any]:
@@ -451,7 +444,7 @@ class PortfolioManager:
     def close(self) -> None:
         logger.info('准备关闭 PortfolioManager 服务...')
         if self._enable_cache:
-            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
+            self._persist_cache()
         if not self._is_external_api_client:
             self.api_client.close()
         logger.info('PortfolioManager 服务已关闭。')
@@ -544,8 +537,10 @@ class PortfolioManager:
         self._persist_cache()
 
     def _persist_cache(self) -> None:
-        if self._enable_cache:
-            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
+        if not self._enable_cache:
+            return
+        cacheable = {n: g for n, g in self._groups_cache.items() if not g.readonly}
+        save_cache(self._cache_path, cacheable, self._self_stock_cache)
 
     @staticmethod
     def _extract_group_id_from_response(response: dict[str, Any] | None) -> str | None:
