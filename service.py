@@ -323,7 +323,7 @@ class PortfolioManager:
         self._selfstock_detail_map = index
         self._selfstock_detail_version = version
         logger.info(
-            "selfstock_detail 数据刷新成功：版本 %s，记录 %d 条。",
+            "selfstock_detail 数据刷新成功：版本 {}，记录 {} 条。",
             version or "未知",
             len(index),
         )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import uuid
 from typing import Any, Dict, List, Tuple
 
 import requests
@@ -196,48 +195,29 @@ def upload_blockstock(
     storepath: str = "/",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> Dict[str, Any]:
-    boundary = f"----HevoFormBoundary{uuid.uuid4().hex[:10]}"
     payload_bytes = _encode_blockstock_payload(group_name, group_type, stock_list)
 
-    parts: List[bytes] = []
-    form_fields = [
-        ("appname", BLOCKSTOCK_APPNAME),
-        ("reqtype", "upload"),
-        ("version", str(version)),
-        ("storepath", storepath),
-        ("clienttype", auth_params.get("clienttype", MULTI_STORAGE_DEFAULT_CLIENTTYPE)),
-        ("compresstype", "none"),
-        ("compresstype_upload", "none"),
-        ("compresstype_download", "none"),
-        ("userid", auth_params.get("userid", "")),
-        ("sessionid", auth_params.get("sessionid", "")),
-        ("expires", auth_params.get("expires", "")),
-    ]
-    for name, value in form_fields:
-        parts.append(f"--{boundary}\r\n".encode("ascii"))
-        parts.append(f'Content-Disposition: form-data; name="{name}"\r\n'.encode("ascii"))
-        parts.append("Content-Type: text/plain; charset=US-ASCII\r\n".encode("ascii"))
-        parts.append("Content-Encoding: 8bit\r\n\r\n".encode("ascii"))
-        parts.append(value.encode("ascii"))
-        parts.append(b"\r\n")
-
-    parts.append(f"--{boundary}\r\n".encode("ascii"))
-    parts.append(f'Content-Disposition: form-data; name="uploadFile"; filename="testFileList"\r\n'.encode("ascii"))
-    parts.append("Content-Type: application/octet-stream\r\n".encode("ascii"))
-    parts.append("Content-Encoding: binary\r\n\r\n".encode("ascii"))
-    parts.append(payload_bytes)
-    parts.append(b"\r\n")
-    parts.append(f"--{boundary}--\r\n".encode("ascii"))
-    body = b"".join(parts)
-
-    headers = {
-        "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
-        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    data: Dict[str, str] = {
+        "appname": BLOCKSTOCK_APPNAME,
+        "reqtype": "upload",
+        "version": str(version),
+        "storepath": storepath,
+        "clienttype": auth_params.get("clienttype", MULTI_STORAGE_DEFAULT_CLIENTTYPE),
+        "compresstype": "none",
+        "compresstype_upload": "none",
+        "compresstype_download": "none",
+        "userid": auth_params.get("userid", ""),
+        "sessionid": auth_params.get("sessionid", ""),
+        "expires": auth_params.get("expires", ""),
     }
+    files = {"uploadFile": ("testFileList", payload_bytes, "application/octet-stream")}
+    headers = {"User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo")}
+
     try:
         response = requests.post(
             MULTI_STORAGE_URL,
-            data=body,
+            data=data,
+            files=files,
             headers=headers,
             cookies=cookies,
             timeout=timeout,
