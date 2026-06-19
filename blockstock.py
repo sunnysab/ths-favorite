@@ -14,6 +14,7 @@ from config import (
     SELF_STOCK_HTTP_TIMEOUT,
 )
 from exceptions import THSNetworkError
+from models import BlockstockDownload, BlockstockGroup, StockEntry
 
 
 def extract_auth_params_from_cookies(cookies: dict[str, str]) -> dict[str, str]:
@@ -35,13 +36,13 @@ def extract_auth_params_from_cookies(cookies: dict[str, str]) -> dict[str, str]:
 
 
 def _encode_blockstock_payload(
-    group_name: str, group_type: int, stock_list: list[tuple[str, str]]
+    group_name: str, group_type: int, stock_list: list[StockEntry]
 ) -> bytes:
     gbk_bytes = group_name.encode("gbk")
     group_id_b64 = base64.b64encode(gbk_bytes).decode("ascii")
 
-    codes = "|".join(code for code, _ in stock_list)
-    types = "|".join(mtype for _, mtype in stock_list)
+    codes = "|".join(e.code for e in stock_list)
+    types = "|".join(e.market_type for e in stock_list)
     stock_str = f"{codes},{types}"
 
     group_data = field_bytes(1, group_id_b64.encode("ascii")) + field_bytes(
@@ -51,9 +52,11 @@ def _encode_blockstock_payload(
     return field_bytes(1, group_payload)
 
 
-def _parse_blockstock_download(data: bytes) -> dict[str, Any]:
+def _parse_blockstock_download(data: bytes) -> BlockstockDownload:
     offset = 0
-    result: dict[str, Any] = {"count": 0, "version": 0, "groups": []}
+    count = 0
+    version = 0
+    groups: list[BlockstockGroup] = []
 
     while offset < len(data):
         tag, offset = decode_varint(data, offset)
@@ -63,23 +66,24 @@ def _parse_blockstock_download(data: bytes) -> dict[str, Any]:
         if wire_type == 0:
             value, offset = decode_varint(data, offset)
             if field_number == 1:
-                result["count"] = value
+                count = value
             elif field_number == 2:
-                result["version"] = value
+                version = value
         elif wire_type == 2:
             length, offset = decode_varint(data, offset)
             chunk = data[offset : offset + length]
             offset += length
             if field_number == 3:
-                inner = _parse_group_payload(chunk)
-                result["groups"].append(inner)
+                groups.append(_parse_group_payload(chunk))
 
-    return result
+    return BlockstockDownload(count=count, version=version, groups=groups)
 
 
-def _parse_group_payload(data: bytes) -> dict[str, Any]:
+def _parse_group_payload(data: bytes) -> BlockstockGroup:
     offset = 0
-    result: dict[str, Any] = {"group_type": 0, "group_name": "", "stock_list": []}
+    group_type = 0
+    group_name = ""
+    stock_list: list[StockEntry] = []
 
     while offset < len(data):
         tag, offset = decode_varint(data, offset)
@@ -89,7 +93,7 @@ def _parse_group_payload(data: bytes) -> dict[str, Any]:
         if wire_type == 0:
             value, offset = decode_varint(data, offset)
             if field_number == 1:
-                result["group_type"] = value
+                group_type = value
         elif wire_type == 2:
             length, offset = decode_varint(data, offset)
             chunk = data[offset : offset + length]
@@ -98,19 +102,19 @@ def _parse_group_payload(data: bytes) -> dict[str, Any]:
                 inner_tag, _ = decode_varint(chunk, 0)
                 if (inner_tag >> 3) == 1:
                     value, _ = decode_varint(chunk, 1)
-                    result["group_type"] = value
+                    group_type = value
             elif field_number == 3:
                 inner = _parse_group_data(chunk)
-                result["stock_list"] = inner.get("stock_list", [])
+                stock_list = inner.get("stock_list", [])
                 gid = inner.get("group_id")
                 if gid:
                     try:
                         gb = base64.b64decode(gid).decode("gbk")
-                        result["group_name"] = gb
+                        group_name = gb
                     except Exception:
-                        result["group_name"] = gid
+                        group_name = gid
 
-    return result
+    return BlockstockGroup(group_name=group_name, group_type=group_type, stock_list=stock_list)
 
 
 def _parse_group_data(data: bytes) -> dict[str, Any]:
@@ -136,11 +140,11 @@ def _parse_group_data(data: bytes) -> dict[str, Any]:
                     types_segment = raw[comma_idx + 1 :]
                     codes = [c for c in codes_segment.split("|") if c]
                     type_codes = [t for t in types_segment.split("|") if t]
-                    stock_list: list[tuple[str, str]] = []
+                    entries: list[StockEntry] = []
                     for i, code in enumerate(codes):
                         mtype = type_codes[i] if i < len(type_codes) else ""
-                        stock_list.append((code, mtype))
-                    result["stock_list"] = stock_list
+                        entries.append(StockEntry(code, mtype))
+                    result["stock_list"] = entries
 
     return result
 
@@ -151,7 +155,7 @@ def download_blockstock(
     *,
     storepath: str = "/",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> dict[str, Any]:
+) -> BlockstockDownload:
     data: dict[str, str] = {
         "reqtype": "download",
         "userid": auth_params.get("userid", ""),
@@ -187,7 +191,7 @@ def upload_blockstock(
     cookies: dict[str, str],
     group_name: str,
     group_type: int,
-    stock_list: list[tuple[str, str]],
+    stock_list: list[StockEntry],
     version: str,
     *,
     storepath: str = "/",
@@ -224,4 +228,4 @@ def upload_blockstock(
     except requests.RequestException as exc:
         raise THSNetworkError("blockstock upload", str(exc)) from exc
 
-    return _parse_blockstock_download(response.content)
+    return _parse_blockstock_download(response.content).__dict__

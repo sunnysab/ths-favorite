@@ -10,7 +10,6 @@ from api import (
     download_selfstock_detail,
 )
 from auth import SessionManager
-from blockstock import download_blockstock, upload_blockstock
 from client import ApiClient
 from config import (
     API_BASE_URL,
@@ -24,8 +23,7 @@ from config import (
 )
 from constant import market_abbr, market_code
 from exceptions import THSAPIError, THSNetworkError
-from models import StockGroup, StockItem
-from selfstock_v1 import download_self_stocks_v1, modify_self_stocks_v1
+from models import StockEntry, StockGroup, StockItem
 from storage import (
     load_groups_cache,
     load_self_stock_cache,
@@ -601,35 +599,33 @@ class PortfolioManager:
         return result
 
     def _batch_mutate_self_stock(self, symbols: list[str], *, action: str) -> dict[str, Any]:
-        cookies = self.api_client.get_cookies()
-        version, current_list = download_self_stocks_v1(cookies)
+        result = self._api.download_self_stocks_v1()
+        current_list = result.items
+        version = result.version
 
-        parsed_new: list[tuple[str, str]] = []
+        parsed_new: list[StockEntry] = []
         for sym in symbols:
             item_code, api_type = self._parse_symbol(sym)
-            parsed_new.append((item_code, api_type))
+            parsed_new.append(StockEntry(item_code, api_type))
 
-        {code: (code, mtype) for code, mtype in current_list}
-        merged_map: dict[str, tuple[str, str]] = {}
+        current_map = {e.code: e for e in current_list}
+        merged_map: dict[str, StockEntry] = {}
 
         if action == "add":
-            for code, mtype in current_list:
-                merged_map[code] = (code, mtype)
-            for code, mtype in parsed_new:
-                merged_map[code] = (code, mtype)
+            merged_map.update(current_map)
+            for e in parsed_new:
+                merged_map[e.code] = e
         elif action == "delete":
-            delete_codes = {code for code, _ in parsed_new}
-            for code, mtype in current_list:
-                if code not in delete_codes:
-                    merged_map[code] = (code, mtype)
+            delete_codes = {e.code for e in parsed_new}
+            merged_map = {code: e for code, e in current_map.items() if code not in delete_codes}
         else:
             raise THSAPIError("我的自选", f"未知操作: {action}")
 
         merged_list = list(merged_map.values())
-        result = modify_self_stocks_v1(cookies, merged_list, version)
+        api_result = self._api.modify_self_stocks_v1(merged_list, version)
 
         updated_items = [
-            StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list
+            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in merged_list
         ]
         self._self_stock_cache = StockGroup(
             name=SELF_STOCK_DEFAULT_NAME,
@@ -637,7 +633,7 @@ class PortfolioManager:
             items=updated_items,
         )
         self._persist_self_stock_cache()
-        return result
+        return api_result
 
     def _batch_mutate_group(
         self, group_identifier: str, symbols: list[str], *, action: str
@@ -657,46 +653,41 @@ class PortfolioManager:
             raise THSAPIError("批量操作", f"未能找到分组 '{group_identifier}' 的缓存数据")
         group_name, _ = entry
 
-        data = download_blockstock(self._auth_params, self.api_client.get_cookies())
-        groups = data.get("groups", [])
-        current_version = str(data.get("version", ""))
+        data = self._api.download_blockstock(self._auth_params)
+        current_version = str(data.version)
         group_type = 0
-        current_list: list[tuple[str, str]] = []
+        current_list: list[StockEntry] = []
 
-        for g in groups:
-            if g.get("group_name") == group_name:
-                group_type = g.get("group_type", 0)
-                current_list = g.get("stock_list", [])
+        for g in data.groups:
+            if g.group_name == group_name:
+                group_type = g.group_type
+                current_list = g.stock_list
                 break
 
         if group_type == 0 and not current_list:
             group_type = 0  # new group — server assigns on first upload
 
-        parsed_new: list[tuple[str, str]] = []
+        parsed_new: list[StockEntry] = []
         for sym in symbols:
             item_code, api_type = self._parse_symbol(sym)
-            parsed_new.append((item_code, api_type))
+            parsed_new.append(StockEntry(item_code, api_type))
 
-        {code: (code, mtype) for code, mtype in current_list}
-        merged_map: dict[str, tuple[str, str]] = {}
+        current_map = {e.code: e for e in current_list}
+        merged_map: dict[str, StockEntry] = {}
 
         if action == "add":
-            for code, mtype in current_list:
-                merged_map[code] = (code, mtype)
-            for code, mtype in parsed_new:
-                merged_map[code] = (code, mtype)
+            merged_map.update(current_map)
+            for e in parsed_new:
+                merged_map[e.code] = e
         elif action == "delete":
-            delete_codes = {code for code, _ in parsed_new}
-            for code, mtype in current_list:
-                if code not in delete_codes:
-                    merged_map[code] = (code, mtype)
+            delete_codes = {e.code for e in parsed_new}
+            merged_map = {code: e for code, e in current_map.items() if code not in delete_codes}
         else:
             raise THSAPIError("批量操作", f"未知操作: {action}")
 
         merged_list = list(merged_map.values())
-        result = upload_blockstock(
+        result = self._api.upload_blockstock(
             self._auth_params,
-            self.api_client.get_cookies(),
             group_name=group_name,
             group_type=group_type,
             stock_list=merged_list,
@@ -704,7 +695,7 @@ class PortfolioManager:
         )
 
         updated_items = [
-            StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list
+            StockItem(code=e.code, market=market_abbr(e.market_type)) for e in merged_list
         ]
         self._groups_cache[group_name] = StockGroup(
             name=group_name, group_id=target_group_id, items=updated_items

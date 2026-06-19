@@ -13,13 +13,14 @@ from config import (
     SELF_STOCK_V1_QUERY_PATH,
 )
 from exceptions import THSAPIError, THSNetworkError
+from models import StockEntry, StockListVersion
 
 
 def download_self_stocks_v1(
     cookies: dict[str, str],
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> tuple[str, list[tuple[str, str]]]:
+) -> StockListVersion:
     headers = {"User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo")}
     userid = cookies.get("userid")
     if userid:
@@ -45,7 +46,7 @@ def download_self_stocks_v1(
     data = payload.get("data", {})
     raw = data.get("selfstock", "")
     version = str(data.get("version", ""))
-    items: list[tuple[str, str]] = []
+    items: list[StockEntry] = []
     if raw:
         comma_idx = raw.rfind(",")
         if comma_idx >= 0:
@@ -55,19 +56,19 @@ def download_self_stocks_v1(
             type_codes = [t for t in types_segment.split("|") if t]
             for i, code in enumerate(codes):
                 mtype = type_codes[i] if i < len(type_codes) else ""
-                items.append((code, mtype))
-    return version, items
+                items.append(StockEntry(code, mtype))
+    return StockListVersion(version=version, items=items)
 
 
 def modify_self_stocks_v1(
     cookies: dict[str, str],
-    stock_list: list[tuple[str, str]],
+    stock_list: list[StockEntry],
     version: str,
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
 ) -> dict[str, Any]:
-    codes = "|".join(code for code, _ in stock_list)
-    types = "|".join(mtype for _, mtype in stock_list)
+    codes = "|".join(e.code for e in stock_list)
+    types = "|".join(e.market_type for e in stock_list)
     selfstock_value = f"{codes},{types}"
     data: dict[str, str] = {
         "selfstock": selfstock_value,

@@ -14,10 +14,15 @@ from config import (
     GROUP_QUERY_TYPES,
 )
 from exceptions import THSAPIError, THSNetworkError
+from models import BlockstockDownload, StockEntry, StockListVersion
 
 # Re-export protocol modules for backwards compatibility
+from blockstock import download_blockstock as _download_blockstock, upload_blockstock as _upload_blockstock
+from selfstock_v1 import download_self_stocks_v1 as _download_self_stocks_v1, modify_self_stocks_v1 as _modify_self_stocks_v1
 from selfstock_v2 import (
     download_self_stocks,
+    download_self_stocks_v2,
+    modify_self_stock_v2,
     upload_self_stocks,
 )
 from utils import parse_ths_xml_response
@@ -122,6 +127,30 @@ class FavoriteAPI:
             self._client.get_cookies(),
             op=op,
             stockcode=stockcode,
+        )
+
+    def download_self_stocks_v1(self) -> StockListVersion:
+        return _download_self_stocks_v1(self._client.get_cookies())
+
+    def modify_self_stocks_v1(
+        self, stock_list: list[StockEntry], version: str
+    ) -> dict[str, Any]:
+        return _modify_self_stocks_v1(self._client.get_cookies(), stock_list, version)
+
+    def download_blockstock(self, auth_params: dict[str, str]) -> BlockstockDownload:
+        return _download_blockstock(auth_params, self._client.get_cookies())
+
+    def upload_blockstock(
+        self,
+        auth_params: dict[str, str],
+        group_name: str,
+        group_type: int,
+        stock_list: list[StockEntry],
+        version: str,
+    ) -> dict[str, Any]:
+        return _upload_blockstock(
+            auth_params, self._client.get_cookies(),
+            group_name, group_type, stock_list, version,
         )
 
     def _post_with_version(
