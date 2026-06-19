@@ -165,10 +165,13 @@ class PortfolioManager:
     ) -> StockGroup:
         group_name = name or SELF_STOCK_DEFAULT_NAME
         if not refresh and self._self_stock_cache is not None:
+            items = list(self._self_stock_cache.items)
+            self._refresh_selfstock_detail_best_effort(context="获取我的自选")
+            self._attach_selfstock_metadata(items)
             return StockGroup(
                 name=group_name,
                 group_id=SELF_STOCK_GROUP_ID,
-                items=list(self._self_stock_cache.items),
+                items=items,
             )
 
         _, items = self._api.download_self_stocks()
@@ -649,6 +652,8 @@ class PortfolioManager:
         updated_items = [
             StockItem(code=e.code, market=market_abbr(e.market_type)) for e in merged_list
         ]
+        self._refresh_selfstock_detail_best_effort(context="批量操作")
+        self._attach_selfstock_metadata(updated_items)
         self._self_stock_cache = StockGroup(
             name=SELF_STOCK_DEFAULT_NAME,
             group_id=SELF_STOCK_GROUP_ID,
