@@ -560,16 +560,30 @@ class PortfolioManager:
 
     @staticmethod
     def _is_version_conflict_error(error: THSAPIError) -> bool:
-        message = str(error)
-        lowered = message.lower()
-        if 'version' in lowered and any(
-            token in lowered for token in ('outdated', 'mismatch', 'refresh', 'expired')
-        ):
+        """Check if a THSAPIError indicates a version conflict that can be retried.
+
+        Uses error.message (raw server message) and error.code for matching,
+        falling back to string-based detection on the full str() representation.
+        """
+        msg = error.message or ''
+        code = (error.code or '').lower()
+        lowered = msg.lower()
+
+        # Exact code match (most reliable, add codes if server returns them)
+        VERSION_CONFLICT_CODES = {'409', 'version_conflict'}
+        if code in VERSION_CONFLICT_CODES:
             return True
-        if '版本' in message and any(
-            token in message for token in ('过期', '失效', '不一致', '不匹配', '刷新')
-        ):
+
+        # English token matching
+        EN_TOKENS = ('outdated', 'mismatch', 'refresh', 'expired', 'stale', 'conflict')
+        if 'version' in lowered and any(t in lowered for t in EN_TOKENS):
             return True
+
+        # Chinese token matching
+        CN_TOKENS = ('过期', '失效', '不一致', '不匹配', '刷新', '版本冲突', '版本过期')
+        if '版本' in msg and any(t in msg for t in CN_TOKENS):
+            return True
+
         return False
 
     @staticmethod

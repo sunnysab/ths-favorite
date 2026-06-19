@@ -8,6 +8,7 @@ class THSAPIError(THSError):
 
     def __init__(self, action_name: str, message: str, code: str | None = None) -> None:
         self.action_name = action_name
+        self.message = message
         self.code = code
         detail = message
         if code is not None:
