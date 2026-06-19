@@ -15,17 +15,17 @@ class StockItem:
 
     def __post_init__(self) -> None:
         if self.market:
-            object.__setattr__(self, "market", self.market.upper())
+            object.__setattr__(self, 'market', self.market.upper())
 
     def __repr__(self) -> str:
         extras = []
         if self.market:
             extras.append(f"market='{self.market}'")
         if self.price is not None:
-            extras.append(f"price={self.price}")
+            extras.append(f'price={self.price}')
         if self.added_at:
             extras.append(f"added_at='{self.added_at}'")
-        extras_str = ", ".join(extras)
+        extras_str = ', '.join(extras)
         if extras_str:
             return f"StockItem(code='{self.code}', {extras_str})"
         return f"StockItem(code='{self.code}')"
@@ -46,7 +46,7 @@ class StockGroup:
             f"group_id='{self.group_id}', items_count={len(self.items)})"
         )
 
-    def diff(self, other: "StockGroup") -> tuple[list[StockItem], list[StockItem]]:
+    def diff(self, other: 'StockGroup') -> tuple[list[StockItem], list[StockItem]]:
         if not isinstance(other, StockGroup):
             logger.error(
                 "类型错误: 比较对象 'other' 必须是 StockGroup 类型，而非 {}。",

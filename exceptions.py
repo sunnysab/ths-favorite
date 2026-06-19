@@ -11,8 +11,8 @@ class THSAPIError(THSError):
         self.code = code
         detail = message
         if code is not None:
-            detail = f"{message} (code={code})"
-        super().__init__(f"{action_name} 失败: {detail}")
+            detail = f'{message} (code={code})'
+        super().__init__(f'{action_name} 失败: {detail}')
 
 
 class THSNetworkError(THSError):
@@ -20,4 +20,4 @@ class THSNetworkError(THSError):
 
     def __init__(self, action_name: str, message: str) -> None:
         self.action_name = action_name
-        super().__init__(f"{action_name} 失败: {message}")
+        super().__init__(f'{action_name} 失败: {message}')

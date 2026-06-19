@@ -17,26 +17,26 @@ def load_groups_cache(cache_file: str) -> dict[str, StockGroup]:
         return {}
 
     try:
-        with open(cache_file, encoding="utf-8") as fp:
+        with open(cache_file, encoding='utf-8') as fp:
             cached_groups_data: list[dict[str, Any]] = json.load(fp)
     except json.JSONDecodeError:
         logger.error(f"错误: 缓存文件 '{cache_file}' 内容不是有效的JSON格式。缓存未加载。")
         return {}
     except Exception:
-        logger.exception("从文件加载缓存时发生未知错误。")
+        logger.exception('从文件加载缓存时发生未知错误。')
         return {}
 
     groups: dict[str, StockGroup] = {}
     for group_data in cached_groups_data:
         items: list[StockItem] = [
-            StockItem(code=item_dict["code"], market=item_dict.get("market"))
-            for item_dict in group_data.get("items", [])
-            if item_dict.get("code")
+            StockItem(code=item_dict['code'], market=item_dict.get('market'))
+            for item_dict in group_data.get('items', [])
+            if item_dict.get('code')
         ]
-        group_name: str | None = group_data.get("name")
-        group_id: str | None = group_data.get("group_id")
+        group_name: str | None = group_data.get('name')
+        group_id: str | None = group_data.get('group_id')
         if not group_name or not group_id:
-            logger.warning(f"缓存中发现不完整的分组数据，已跳过: {group_data}")
+            logger.warning(f'缓存中发现不完整的分组数据，已跳过: {group_data}')
             continue
         groups[group_name] = StockGroup(name=group_name, group_id=group_id, items=items)
 
@@ -53,19 +53,19 @@ def save_groups_cache(cache_file: str, groups: dict[str, StockGroup]) -> None:
         for group_obj in groups.values():
             serializable.append(
                 {
-                    "name": group_obj.name,
-                    "group_id": group_obj.group_id,
-                    "items": [
-                        {"code": item.code, "market": item.market} for item in group_obj.items
+                    'name': group_obj.name,
+                    'group_id': group_obj.group_id,
+                    'items': [
+                        {'code': item.code, 'market': item.market} for item in group_obj.items
                     ],
                 }
             )
 
-        with open(cache_file, "w", encoding="utf-8") as fp:
+        with open(cache_file, 'w', encoding='utf-8') as fp:
             json.dump(serializable, fp, ensure_ascii=False, indent=2)
         logger.info(f"已成功将 {len(serializable)} 个分组保存到缓存文件 '{cache_file}'。")
     except Exception:
-        logger.exception("保存缓存到文件时发生错误。")
+        logger.exception('保存缓存到文件时发生错误。')
 
 
 def load_self_stock_cache(cache_file: str) -> StockGroup | None:
@@ -75,25 +75,25 @@ def load_self_stock_cache(cache_file: str) -> StockGroup | None:
         return None
 
     try:
-        with open(cache_file, encoding="utf-8") as fp:
+        with open(cache_file, encoding='utf-8') as fp:
             cached_group_data: dict[str, Any] = json.load(fp)
     except json.JSONDecodeError:
         logger.error(f"错误: 缓存文件 '{cache_file}' 内容不是有效的JSON格式。缓存未加载。")
         return None
     except Exception:
-        logger.exception("从文件加载我的自选缓存时发生未知错误。")
+        logger.exception('从文件加载我的自选缓存时发生未知错误。')
         return None
 
     if not isinstance(cached_group_data, dict):
         return None
 
     items: list[StockItem] = [
-        StockItem(code=item_dict["code"], market=item_dict.get("market"))
-        for item_dict in cached_group_data.get("items", [])
-        if item_dict.get("code")
+        StockItem(code=item_dict['code'], market=item_dict.get('market'))
+        for item_dict in cached_group_data.get('items', [])
+        if item_dict.get('code')
     ]
-    group_name: str | None = cached_group_data.get("name")
-    group_id: str | None = cached_group_data.get("group_id")
+    group_name: str | None = cached_group_data.get('name')
+    group_id: str | None = cached_group_data.get('group_id')
     if not group_name or not group_id:
         return None
     return StockGroup(name=group_name, group_id=group_id, items=items)
@@ -103,14 +103,14 @@ def save_self_stock_cache(cache_file: str, group: StockGroup) -> None:
     logger.info(f"尝试将我的自选缓存保存到 '{cache_file}'...")
     try:
         serializable = {
-            "name": group.name,
-            "group_id": group.group_id,
-            "items": [{"code": item.code, "market": item.market} for item in group.items],
+            'name': group.name,
+            'group_id': group.group_id,
+            'items': [{'code': item.code, 'market': item.market} for item in group.items],
         }
-        with open(cache_file, "w", encoding="utf-8") as fp:
+        with open(cache_file, 'w', encoding='utf-8') as fp:
             json.dump(serializable, fp, ensure_ascii=False, indent=2)
     except Exception:
-        logger.exception("保存我的自选缓存到文件时发生错误。")
+        logger.exception('保存我的自选缓存到文件时发生错误。')
 
 
 def load_cookie_cache_data(cache_path: str) -> dict[str, Any]:
@@ -119,14 +119,14 @@ def load_cookie_cache_data(cache_path: str) -> dict[str, Any]:
     if not os.path.exists(cache_path):
         return {}
     try:
-        with open(cache_path, encoding="utf-8") as fp:
+        with open(cache_path, encoding='utf-8') as fp:
             cached_data = json.load(fp)
         if isinstance(cached_data, dict):
             return cached_data
     except json.JSONDecodeError:
         logger.warning(f"cookies 缓存文件 '{cache_path}' 内容无效，将忽略。")
     except Exception:
-        logger.exception("读取 cookies 缓存文件失败。")
+        logger.exception('读取 cookies 缓存文件失败。')
     return {}
 
 
@@ -147,17 +147,17 @@ def read_cached_cookies(cache_path: str, cache_key: str, ttl_seconds: int) -> di
     if not entry:
         return None
 
-    timestamp = entry.get("timestamp")
+    timestamp = entry.get('timestamp')
     try:
         timestamp_value = float(timestamp)
     except (TypeError, ValueError):
         return None
 
     if time.time() - timestamp_value > ttl_seconds:
-        logger.info(f"cookies 缓存已过期: {cache_key}")
+        logger.info(f'cookies 缓存已过期: {cache_key}')
         return None
 
-    cookies_payload = entry.get("cookies")
+    cookies_payload = entry.get('cookies')
     if isinstance(cookies_payload, dict) and cookies_payload:
         return {str(k): str(v) for k, v in cookies_payload.items()}
     return None
@@ -171,14 +171,14 @@ def read_cached_auth_params(
     entry = cache_data.get(cache_key)
     if not entry:
         return None
-    timestamp = entry.get("timestamp")
+    timestamp = entry.get('timestamp')
     try:
         timestamp_value = float(timestamp)
     except (TypeError, ValueError):
         return None
     if time.time() - timestamp_value > ttl_seconds:
         return None
-    auth = entry.get("auth_params")
+    auth = entry.get('auth_params')
     if isinstance(auth, dict) and auth:
         return {str(k): str(v) for k, v in auth.items()}
     return None
@@ -195,8 +195,8 @@ def write_cookie_cache(
 
     cache_data = load_cookie_cache_data(cache_path)
     entry: dict[str, Any] = {
-        "cookies": {str(k): str(v) for k, v in cookies_payload.items()},
-        "timestamp": time.time(),
+        'cookies': {str(k): str(v) for k, v in cookies_payload.items()},
+        'timestamp': time.time(),
     }
     if extra_fields:
         entry.update(extra_fields)
@@ -207,8 +207,8 @@ def write_cookie_cache(
         os.makedirs(dir_name, exist_ok=True)
 
     try:
-        with open(cache_path, "w", encoding="utf-8") as fp:
+        with open(cache_path, 'w', encoding='utf-8') as fp:
             json.dump(cache_data, fp, ensure_ascii=False, indent=2)
-        logger.info(f"已更新 cookies 缓存: {cache_path} -> {cache_key}")
+        logger.info(f'已更新 cookies 缓存: {cache_path} -> {cache_key}')
     except Exception:
-        logger.exception("写入 cookies 缓存文件失败。")
+        logger.exception('写入 cookies 缓存文件失败。')

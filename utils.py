@@ -21,15 +21,15 @@ def parse_ths_xml_response(xml_text: str, action_name: str) -> ET.Element:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
-        raise THSAPIError(action_name, f"响应解析失败: {exc}") from exc
+        raise THSAPIError(action_name, f'响应解析失败: {exc}') from exc
 
-    ret_node = root.find("ret")
+    ret_node = root.find('ret')
     if ret_node is None:
-        raise THSAPIError(action_name, "响应缺少 <ret> 节点")
+        raise THSAPIError(action_name, '响应缺少 <ret> 节点')
 
-    code = ret_node.attrib.get("code")
-    if str(code) != "0":
-        message = ret_node.attrib.get("msg") or "未知错误"
+    code = ret_node.attrib.get('code')
+    if str(code) != '0':
+        message = ret_node.attrib.get('msg') or '未知错误'
         raise THSAPIError(action_name, message, code=str(code) if code is not None else None)
 
     return root
