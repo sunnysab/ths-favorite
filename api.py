@@ -1,6 +1,6 @@
 import base64
 import json
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
@@ -42,7 +42,7 @@ SELFSTOCK_DETAIL_TIMEOUT = 10.0
 def _merge_entries(
     current_list: list[StockEntry],
     parsed_new: list[StockEntry],
-    action: str,
+    action: Literal['add', 'delete'],
     context: str = '批量操作',
 ) -> list[StockEntry]:
     """Merge current entries with add/delete changes, deduplicated by stock code."""
@@ -221,7 +221,7 @@ class FavoriteAPI:
     # Internal: self-stock protocol
     # ══════════════════════════════════════════
 
-    def _batch_self_stock(self, symbols: list[StockEntry], *, action: str) -> dict[str, Any]:
+    def _batch_self_stock(self, symbols: list[StockEntry], *, action: Literal['add', 'delete']) -> dict[str, Any]:
         """Read-modify-write for self-stock batch operations (v1 protocol)."""
         current = _download_self_stocks_v1(self._client.get_cookies())
         merged = _merge_entries(current.items, symbols, action, '我的自选')
@@ -250,7 +250,7 @@ class FavoriteAPI:
         group_name: str,
         symbols: list[StockEntry],
         *,
-        action: str,
+        action: Literal['add', 'delete'],
     ) -> dict[str, Any]:
         """Read-modify-write for custom group batch operations (multiStorage protocol)."""
         auth_params = self._get_auth_params()
