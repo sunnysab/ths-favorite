@@ -1,3 +1,4 @@
+import atexit
 import json
 from typing import Any, TypeVar
 
@@ -14,6 +15,7 @@ TApiClient = TypeVar('TApiClient', bound='ApiClient')
 # Shared session for protocol-level requests (connection pooling, no cookie state).
 # Each call still passes explicit cookies= — this session only provides TCP reuse.
 SHARED_SESSION = Session()
+atexit.register(SHARED_SESSION.close)
 
 
 class ApiClient:
