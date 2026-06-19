@@ -147,6 +147,7 @@ uv run main.py group del 消费
 uv run main.py group share 消费 604800
 ```
 
+同花顺为相关功能设计了若干 API，本项目尽力抹平单独与批量操作、“我的自选”与其他分组的差异。
 更完整的 CLI / API 参数说明、命令矩阵和场景示例见 [使用指南](TUTORIAL.md)。
 
 ## 认证与缓存
@@ -162,8 +163,7 @@ Cookie 缓存行为如下：
 
 - 缓存文件默认是 `ths_cookie_cache.json`，可通过 `cookie_cache_path` 或 `--cookie-cache` 覆盖。
 - 缓存有效期默认 24 小时。
-- 缓存中仅保存 Cookie 和时间戳，不再落盘明文密码。
-- 分组数据会缓存到 `ths_favorite_cache.json`，“我的自选”会缓存到 `ths_self_stock_cache.json`。
+- 缓存中仅保存 Cookie 和时间戳。
 
 ## 配置
 
