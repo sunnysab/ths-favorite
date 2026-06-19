@@ -35,7 +35,7 @@ class SelfstockCliTest(unittest.TestCase):
 
     def test_stock_add_accepts_selfstock_name(self):
         manager = Mock()
-        args = argparse.Namespace(stock_command="add", group="我的自选", stock="600519.SH")
+        args = argparse.Namespace(stock_command="add", group="我的自选", stocks=["600519.SH"])
 
         handle_stock_command(manager, args)
 
@@ -54,11 +54,11 @@ class SelfstockCliTest(unittest.TestCase):
             )
             handle_stock_command(
                 manager,
-                argparse.Namespace(stock_command="add", group="消费", stock="600519.SH"),
+                argparse.Namespace(stock_command="add", group="消费", stocks=["600519.SH"]),
             )
             handle_stock_command(
                 manager,
-                argparse.Namespace(stock_command="del", group="消费", stock="600519.SH"),
+                argparse.Namespace(stock_command="del", group="消费", stocks=["600519.SH"]),
             )
 
         self.assertEqual(mock_print.call_args_list[0].args[0], "已成功创建分组 '消费'")

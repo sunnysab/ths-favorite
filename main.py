@@ -172,7 +172,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="向分组添加股票",
     )
     stock_add_parser.add_argument("group", help="分组名称或ID")
-    stock_add_parser.add_argument("stock", help="股票代码，格式: code.market (如: 600519.SH)")
+    stock_add_parser.add_argument(
+        "stocks", nargs="+", help="股票代码，格式: code.market (如: 600519.SH)，支持多个"
+    )
 
     stock_del_parser = stock_subparsers.add_parser(
         "del",
@@ -180,7 +182,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="从分组删除股票",
     )
     stock_del_parser.add_argument("group", help="分组名称或ID")
-    stock_del_parser.add_argument("stock", help="股票代码，格式: code.market (如: 600519.SH)")
+    stock_del_parser.add_argument(
+        "stocks", nargs="+", help="股票代码，格式: code.market (如: 600519.SH)，支持多个"
+    )
 
     self_parser = subparsers.add_parser(
         "self",
@@ -318,12 +322,14 @@ def handle_group_command(manager: PortfolioManager, args: argparse.Namespace) ->
 
 
 def handle_stock_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
+    items = args.stocks if len(args.stocks) > 1 else args.stocks[0]
+    label = " ".join(args.stocks)
     if args.stock_command == "add":
-        manager.add_item_to_group(args.group, args.stock)
-        print(f"已将 {args.stock} 添加到分组 '{args.group}'")
+        manager.add_item_to_group(args.group, items)
+        print(f"已将 {label} 添加到分组 '{args.group}'")
     elif args.stock_command == "del":
-        manager.delete_item_from_group(args.group, args.stock)
-        print(f"已从分组 '{args.group}' 删除 {args.stock}")
+        manager.delete_item_from_group(args.group, items)
+        print(f"已从分组 '{args.group}' 删除 {label}")
 
 
 def handle_self_command(manager: PortfolioManager, args: argparse.Namespace) -> None:
