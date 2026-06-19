@@ -228,4 +228,4 @@ def upload_blockstock(
     except requests.RequestException as exc:
         raise THSNetworkError("blockstock upload", str(exc)) from exc
 
-    return _parse_blockstock_download(response.content).__dict__
+    return _parse_blockstock_download(response.content)
