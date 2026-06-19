@@ -106,20 +106,24 @@ with PortfolioManager(cookies='userid=...; sessionid=...') as portfolio:
     print(groups.keys())
 ```
 
-批量添加/删除：
+添加/删除股票（单只与批量）：
 
 ```python
 with PortfolioManager() as portfolio:
-    # 传入列表即走批量路径（一次 API 请求）
-    portfolio.add_item_to_group("我的自选", ["600519.SH", "000858.SZ", "300750.SZ"])
-    portfolio.add_item_to_group("消费", ["002415.SZ", "601899.SH"])
+    # 单只操作
+    portfolio.add_item("消费", "600519.SH")
+    portfolio.remove_item("消费", "000001.SZ")
 
-    # 删除同样支持批量
-    portfolio.delete_item_from_group("我的自选", ["000001.SZ", "000002.SZ"])
+    # 批量操作（一次 API 请求）
+    portfolio.add_items("我的自选", ["600519.SH", "000858.SZ", "300750.SZ"])
+    portfolio.remove_items("我的自选", ["000001.SZ", "000002.SZ"])
 
-    # 单只用法不变（向后兼容）
-    portfolio.add_item_to_group("消费", "600519.SH")
+    # 对"我的自选"同样适用（视为一个特殊分组）
+    portfolio.add_item("我的自选", "600519.SH")
+    portfolio.add_items("消费", ["002415.SZ", "601899.SH"])
 ```
+
+> `add_item_to_group` / `delete_item_from_group` 仍可用作向后兼容的别名。
 
 ## 常用命令
 
