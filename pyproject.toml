@@ -29,7 +29,15 @@ cli = [
 [dependency-groups]
 dev = [
     "pytest",
+    "ruff",
 ]
+
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
 
 [project.urls]
 Homepage = "https://github.com/sunnysab/ths-favorite"

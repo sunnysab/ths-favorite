@@ -5,6 +5,11 @@
 > [!NOTE]
 > 该项目代码主要由 AI 编写，可能存在一些 Bug 或考虑不周的地方。如有改进需求可以提 issue 或 pull request。
 
+## 环境要求
+
+- Python >= 3.8
+- [uv](https://docs.astral.sh/uv/)（推荐）或 pip
+
 ## 项目功能
 
 - 通过同花顺账号密码登录，或显式传入 Cookie
@@ -30,18 +35,25 @@ cd ths-favorite
 
 ### 2. 安装依赖
 
-如果你只是把项目作为 Python 库依赖使用，基础依赖即可:
+本项目推荐使用 [uv](https://docs.astral.sh/uv/) 管理依赖和运行。安装 uv 后，一条命令即可完成环境初始化：
 
 ```bash
-pip install -e .
+uv sync
 ```
 
 如果需要命令行表格输出，请额外安装 `cli` 可选依赖:
 
 ```bash
-pip install -e '.[cli]'
-pip install 'ths-favorite[cli]'
+uv sync --extra cli
 ```
+
+如果需要开发工具（pytest、ruff 等），可一并安装 dev 组:
+
+```bash
+uv sync --group dev
+```
+
+> 如果使用 pip，基础安装: `pip install -e .`；带 CLI: `pip install -e '.[cli]'`
 
 ## 快速开始
 
@@ -50,7 +62,7 @@ pip install 'ths-favorite[cli]'
 首次运行时，推荐显式提供账号密码登录：
 
 ```bash
-python main.py --username 13300000000 --password yourpass list
+uv run main.py --username 13300000000 --password yourpass list
 ```
 
 登录成功后，会把当前会话 Cookie 缓存到本地，后续可直接复用。
@@ -60,9 +72,9 @@ python main.py --username 13300000000 --password yourpass list
 如果本地已有未过期的凭据缓存，可以直接运行：
 
 ```bash
-python main.py list
-python main.py self list
-python main.py list -g 消费
+uv run main.py list
+uv run main.py self list
+uv run main.py list -g 消费
 ```
 
 如果缓存失效或本地没有缓存，CLI 会以未登录态启动；此时请重新提供 `--username` / `--password`。
@@ -97,20 +109,20 @@ with PortfolioManager(cookies='userid=...; sessionid=...') as portfolio:
 
 ```bash
 # 查看分组
-python main.py list
-python main.py list -g 消费
-python main.py self list
+uv run main.py list
+uv run main.py list -g 消费
+uv run main.py self list
 
 # 添加 / 删除股票
-python main.py stock add 消费 600519.SH
-python main.py stock del 消费 600519.SH
-python main.py stock add 我的自选 600519.SH
-python main.py stock del 我的自选 600519.SH
+uv run main.py stock add 消费 600519.SH
+uv run main.py stock del 消费 600519.SH
+uv run main.py stock add 我的自选 600519.SH
+uv run main.py stock del 我的自选 600519.SH
 
 # 分组管理
-python main.py group add "长线跟踪"
-python main.py group del 消费
-python main.py group share 消费 604800
+uv run main.py group add "长线跟踪"
+uv run main.py group del 消费
+uv run main.py group share 消费 604800
 ```
 
 更完整的 CLI / API 参数说明、命令矩阵和场景示例见 [使用指南](TUTORIAL.md)。
