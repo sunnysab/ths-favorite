@@ -22,6 +22,8 @@ __MARKET_CODE = {
 
 # 生成一个反向的、CODE -> MARKET 的字典
 __MARKET_NAME = {v: k for k, v in __MARKET_CODE.items()}
+# 同花顺返回的多余/备用市场代码，手动补充映射
+__MARKET_NAME['151'] = 'BJ'  # 北交所（备用码）
 
 
 def market_abbr(market_type: str) -> str:
