@@ -12,11 +12,10 @@ from auth import SessionManager
 from client import ApiClient
 from config import (
     API_BASE_URL,
+    CACHE_FILE,
     COOKIE_CACHE_FILE,
     COOKIE_CACHE_TTL_SECONDS,
     DEFAULT_HEADERS,
-    GROUP_CACHE_FILE,
-    SELF_STOCK_CACHE_FILE,
     SELF_STOCK_DEFAULT_NAME,
     SELF_STOCK_GROUP_ID,
 )
@@ -24,10 +23,8 @@ from constant import market_abbr, market_code
 from exceptions import THSAPIError, THSNetworkError
 from models import StockEntry, StockGroup, StockItem
 from storage import (
-    load_groups_cache,
-    load_self_stock_cache,
-    save_groups_cache,
-    save_self_stock_cache,
+    load_cache,
+    save_cache,
 )
 
 
@@ -43,6 +40,7 @@ class PortfolioManager:
         password: str | None = None,
         cookie_cache_path: str | None = None,
         cookie_cache_ttl_seconds: int = COOKIE_CACHE_TTL_SECONDS,
+        enable_cache: bool = True,
     ) -> None:
         """Initialize the manager.
 
@@ -53,13 +51,16 @@ class PortfolioManager:
             password: Account password when using credential authentication.
             cookie_cache_path: Override path for cached cookies.
             cookie_cache_ttl_seconds: Custom TTL (seconds) for cached cookies.
+            enable_cache: Whether to persist groups / self-stock to disk
+                and use cached data as fallback. When False, all data is
+                fetched fresh from the API and never written to disk.
         """
-        self._group_cache_path: str = GROUP_CACHE_FILE
-        self._groups_cache: dict[str, StockGroup] = load_groups_cache(self._group_cache_path)
-        self._self_stock_cache_path: str = SELF_STOCK_CACHE_FILE
-        self._self_stock_cache: StockGroup | None = load_self_stock_cache(
-            self._self_stock_cache_path
-        )
+        self._cache_path: str = CACHE_FILE
+        self._enable_cache: bool = enable_cache
+        if enable_cache:
+            self._groups_cache, self._self_stock_cache = load_cache(self._cache_path)
+        else:
+            self._groups_cache, self._self_stock_cache = {}, None
         self._current_version: str | int | None = None
         self._selfstock_detail_version: str | None = None
         self._selfstock_detail_map: dict[tuple[str, str], dict[str, Any]] = {}
@@ -102,7 +103,7 @@ class PortfolioManager:
         try:
             raw_data = self._api.query_groups()
         except THSNetworkError:
-            if use_cache and self._groups_cache:
+            if use_cache and self._enable_cache and self._groups_cache:
                 logger.warning('获取分组失败，返回内存缓存数据。')
                 return self._groups_cache.copy()
             raise
@@ -142,7 +143,8 @@ class PortfolioManager:
                 formatted[name] = StockGroup(name=name, group_id=group_id, items=items)
 
         self._groups_cache = formatted
-        save_groups_cache(self._group_cache_path, formatted)
+        if self._enable_cache:
+            save_cache(self._cache_path, formatted, self._self_stock_cache)
         merged = formatted.copy()
         if include_self_stocks:
             self_group = self.get_self_stocks(refresh=False, name=self_stocks_name)
@@ -156,7 +158,7 @@ class PortfolioManager:
         name: str | None = None,
     ) -> StockGroup:
         group_name = name or SELF_STOCK_DEFAULT_NAME
-        if not refresh and self._self_stock_cache is not None:
+        if self._enable_cache and not refresh and self._self_stock_cache is not None:
             items = list(self._self_stock_cache.items)
             self._refresh_selfstock_detail_best_effort(context='获取我的自选')
             self._attach_selfstock_metadata(items)
@@ -178,7 +180,8 @@ class PortfolioManager:
             group_id=SELF_STOCK_GROUP_ID,
             items=list(parsed_items),
         )
-        save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
+        if self._enable_cache:
+            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
         return group
 
     def add_item_to_group(self, group_identifier: str, symbol: str | list[str]) -> dict[str, Any]:
@@ -447,9 +450,8 @@ class PortfolioManager:
 
     def close(self) -> None:
         logger.info('准备关闭 PortfolioManager 服务...')
-        save_groups_cache(self._group_cache_path, self._groups_cache)
-        if self._self_stock_cache is not None:
-            save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
+        if self._enable_cache:
+            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
         if not self._is_external_api_client:
             self.api_client.close()
         logger.info('PortfolioManager 服务已关闭。')
@@ -505,7 +507,7 @@ class PortfolioManager:
         if new_item in group.items:
             return
         group.items.append(new_item)
-        self._persist_groups_cache()
+        self._persist_cache()
 
     def _remove_item_from_local_cache(
         self, group_id: str, item_code: str, market_short: str | None
@@ -520,7 +522,7 @@ class PortfolioManager:
         original_len = len(group.items)
         group.items = [item for item in group.items if item != target]
         if len(group.items) != original_len:
-            self._persist_groups_cache()
+            self._persist_cache()
 
     def _add_group_to_local_cache(self, group_name: str, response: dict[str, Any] | None) -> None:
         group_id = self._extract_group_id_from_response(response)
@@ -529,7 +531,7 @@ class PortfolioManager:
             self.get_all_groups(use_cache=False)
             return
         self._groups_cache[group_name] = StockGroup(name=group_name, group_id=group_id, items=[])
-        self._persist_groups_cache()
+        self._persist_cache()
 
     def _remove_group_from_local_cache(self, group_id: str) -> None:
         entry = self._get_group_entry_by_id(group_id)
@@ -539,14 +541,11 @@ class PortfolioManager:
             return
         name, _ = entry
         self._groups_cache.pop(name, None)
-        self._persist_groups_cache()
+        self._persist_cache()
 
-    def _persist_groups_cache(self) -> None:
-        save_groups_cache(self._group_cache_path, self._groups_cache)
-
-    def _persist_self_stock_cache(self) -> None:
-        if self._self_stock_cache is not None:
-            save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
+    def _persist_cache(self) -> None:
+        if self._enable_cache:
+            save_cache(self._cache_path, self._groups_cache, self._self_stock_cache)
 
     @staticmethod
     def _extract_group_id_from_response(response: dict[str, Any] | None) -> str | None:

@@ -14,11 +14,8 @@ class SelfstockServiceTest(unittest.TestCase):
         tmpdir = Path(tempfile.mkdtemp())
         manager = PortfolioManager(
             cookie_cache_path=str(tmpdir / 'cookies.json'),
+            enable_cache=False,
         )
-        manager._group_cache_path = str(tmpdir / 'groups.json')
-        manager._self_stock_cache_path = str(tmpdir / 'selfstock.json')
-        manager._groups_cache = {}
-        manager._self_stock_cache = None
         return manager
 
     def test_get_self_stocks_returns_virtual_group_without_plaintext_credentials(self):
