@@ -560,41 +560,36 @@ class PortfolioManager:
 
     @staticmethod
     def _is_version_conflict_error(error: THSAPIError) -> bool:
-        """Check if a THSAPIError indicates a version conflict that can be retried.
-
-        Uses error.message (raw server message) and error.code for matching,
-        falling back to string-based detection on the full str() representation.
-        """
         msg = error.message or ''
         code = (error.code or '').lower()
         lowered = msg.lower()
 
         # Exact code match (most reliable, add codes if server returns them)
-        VERSION_CONFLICT_CODES = {'409', 'version_conflict'}
-        if code in VERSION_CONFLICT_CODES:
+        version_codes = {'409', 'version_conflict'}
+        if code in version_codes:
             return True
 
         # English token matching
-        EN_TOKENS = ('outdated', 'mismatch', 'refresh', 'expired', 'stale', 'conflict')
-        if 'version' in lowered and any(t in lowered for t in EN_TOKENS):
+        en_tokens = ('outdated', 'mismatch', 'refresh', 'expired', 'stale', 'conflict')
+        if 'version' in lowered and any(t in lowered for t in en_tokens):
             return True
 
         # Chinese token matching
-        CN_TOKENS = ('过期', '失效', '不一致', '不匹配', '刷新', '版本冲突', '版本过期')
-        if '版本' in msg and any(t in msg for t in CN_TOKENS):
+        cn_tokens = ('过期', '失效', '不一致', '不匹配', '刷新', '版本冲突', '版本过期')
+        if '版本' in msg and any(t in msg for t in cn_tokens):
             return True
 
         return False
 
     @staticmethod
-    def _parse_symbol(symbol: str) -> tuple[str, str]:
+    def _parse_symbol(symbol: str) -> StockEntry:
         if '.' not in symbol:
             raise THSAPIError('解析股票代码', f"股票代码格式无效: '{symbol}'")
         code_part, market_suffix_part = symbol.rsplit('.', 1)
         api_market_type_code = market_code(market_suffix_part.upper())
         if not api_market_type_code:
             raise THSAPIError('解析股票代码', f"未知的市场后缀: '{market_suffix_part}'")
-        return code_part, api_market_type_code
+        return StockEntry(code_part, api_market_type_code)
 
     def _update_version_from_response_data(self, response_data: dict[str, Any] | None) -> None:
         if response_data and isinstance(response_data, dict) and 'version' in response_data:
@@ -682,11 +677,7 @@ class PortfolioManager:
 
     @staticmethod
     def _parse_symbols(symbols: list[str]) -> list[StockEntry]:
-        result: list[StockEntry] = []
-        for sym in symbols:
-            item_code, api_type = PortfolioManager._parse_symbol(sym)
-            result.append(StockEntry(item_code, api_type))
-        return result
+        return [PortfolioManager._parse_symbol(sym) for sym in symbols]
 
 
 __all__ = ['PortfolioManager']

@@ -221,7 +221,9 @@ class FavoriteAPI:
     # Internal: self-stock protocol
     # ══════════════════════════════════════════
 
-    def _batch_self_stock(self, symbols: list[StockEntry], *, action: Literal['add', 'delete']) -> dict[str, Any]:
+    def _batch_self_stock(
+        self, symbols: list[StockEntry], *, action: Literal['add', 'delete']
+    ) -> dict[str, Any]:
         """Read-modify-write for self-stock batch operations (v1 protocol)."""
         current = _download_self_stocks_v1(self._client.get_cookies())
         merged = _merge_entries(current.items, symbols, action, '我的自选')
