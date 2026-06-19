@@ -123,7 +123,15 @@ class PortfolioManager:
             items: list[StockItem] = []
 
             if self._api.is_dynamic_group(group_id):
-                formatted[name] = StockGroup(name=name, group_id=group_id, items=[], readonly=True)
+                dynamic_items: list[StockItem] = []
+                try:
+                    entries = self._api.query_dynamic_plate(name)
+                    for entry in entries:
+                        market_short = market_abbr(entry.market_type) if entry.market_type else None
+                        dynamic_items.append(StockItem(code=entry.code, market=market_short))
+                except (THSAPIError, THSNetworkError):
+                    logger.warning('获取动态分组「{}」股票列表失败，返回空。', name)
+                formatted[name] = StockGroup(name=name, group_id=group_id, items=dynamic_items, readonly=True)
             else:
                 for detail in group_raw.get('item_details', []):
                     item_code: str | None = detail.get('code')
