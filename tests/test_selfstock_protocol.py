@@ -3,12 +3,12 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from api import download_self_stocks, modify_self_stock_v2, upload_self_stocks
 from exceptions import THSAPIError, THSNetworkError
+from selfstock_v2 import download_self_stocks, modify_self_stock_v2, upload_self_stocks
 
 
 class SelfstockProtocolTest(unittest.TestCase):
-    @patch("api.requests.get")
+    @patch("selfstock_v2.requests.get")
     def test_download_self_stocks_parses_result_items(self, mock_get):
         mock_get.return_value = Mock(
             json=Mock(
@@ -27,7 +27,7 @@ class SelfstockProtocolTest(unittest.TestCase):
         self.assertEqual(meta["errorCode"], 0)
         self.assertEqual(items, [("600366", "17")])
 
-    @patch("api.requests.get")
+    @patch("selfstock_v2.requests.get")
     def test_modify_self_stock_v2_add_uses_stockcode_query(self, mock_get):
         mock_get.return_value = Mock(
             json=Mock(
@@ -42,7 +42,7 @@ class SelfstockProtocolTest(unittest.TestCase):
         self.assertEqual(kwargs["params"]["op"], "add")
         self.assertEqual(kwargs["params"]["stockcode"], "300830_33")
 
-    @patch("api.requests.get")
+    @patch("selfstock_v2.requests.get")
     def test_modify_self_stock_v2_del_uses_stockcode_query(self, mock_get):
         mock_get.return_value = Mock(
             json=Mock(
@@ -57,7 +57,7 @@ class SelfstockProtocolTest(unittest.TestCase):
         self.assertEqual(kwargs["params"]["op"], "del")
         self.assertEqual(kwargs["params"]["stockcode"], "300830_33")
 
-    @patch("api.requests.get")
+    @patch("selfstock_v2.requests.get")
     def test_download_self_stocks_raises_api_error_on_nonzero_error_code(self, mock_get):
         mock_get.return_value = Mock(
             json=Mock(
@@ -69,7 +69,7 @@ class SelfstockProtocolTest(unittest.TestCase):
         with self.assertRaises(THSAPIError):
             download_self_stocks({"userid": "1"})
 
-    @patch("api.requests.get", side_effect=requests.RequestException("boom"))
+    @patch("selfstock_v2.requests.get", side_effect=requests.RequestException("boom"))
     def test_modify_self_stock_v2_raises_network_error(self, _mock_get):
         with self.assertRaises(THSNetworkError):
             modify_self_stock_v2({"userid": "1"}, op="del", stockcode="300830_33")

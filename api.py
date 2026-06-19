@@ -6,6 +6,9 @@ from typing import Any
 
 import requests
 
+# Re-export protocol modules for backwards compatibility
+from blockstock import download_blockstock as _download_blockstock
+from blockstock import upload_blockstock as _upload_blockstock
 from client import ApiClient
 from config import (
     DEFAULT_FROM_PARAM,
@@ -13,17 +16,13 @@ from config import (
     ENDPOINTS,
     GROUP_QUERY_TYPES,
 )
-from exceptions import THSAPIError, THSNetworkError
 from dynamicplate import query_dynamic_plate as _query_dynamic_plate
+from exceptions import THSAPIError, THSNetworkError
 from models import BlockstockDownload, StockEntry, StockListVersion
-
-# Re-export protocol modules for backwards compatibility
-from blockstock import download_blockstock as _download_blockstock, upload_blockstock as _upload_blockstock
-from selfstock_v1 import download_self_stocks_v1 as _download_self_stocks_v1, modify_self_stocks_v1 as _modify_self_stocks_v1
+from selfstock_v1 import download_self_stocks_v1 as _download_self_stocks_v1
+from selfstock_v1 import modify_self_stocks_v1 as _modify_self_stocks_v1
 from selfstock_v2 import (
     download_self_stocks,
-    download_self_stocks_v2,
-    modify_self_stock_v2,
     upload_self_stocks,
 )
 from utils import parse_ths_xml_response
