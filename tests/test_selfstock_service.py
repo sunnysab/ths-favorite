@@ -70,7 +70,9 @@ class SelfstockServiceTest(unittest.TestCase):
     def test_add_item_to_group_routes_virtual_selfstock_to_upload(self):
         manager = self.build_manager()
         manager.get_self_stocks = Mock(
-            return_value=StockGroup(name=SELF_STOCK_DEFAULT_NAME, group_id=SELF_STOCK_GROUP_ID, items=[])
+            return_value=StockGroup(
+                name=SELF_STOCK_DEFAULT_NAME, group_id=SELF_STOCK_GROUP_ID, items=[]
+            )
         )
         manager._api.upload_self_stocks = Mock(
             return_value={"errorCode": 0, "errorMsg": "修改成功", "result": {}, "isT": True}
@@ -111,7 +113,9 @@ class SelfstockServiceTest(unittest.TestCase):
                 ],
             }
         )
-        manager.refresh_selfstock_detail = Mock(side_effect=THSNetworkError("selfstock_detail", "boom"))
+        manager.refresh_selfstock_detail = Mock(
+            side_effect=THSNetworkError("selfstock_detail", "boom")
+        )
 
         groups = manager.get_all_groups()
 
@@ -131,7 +135,9 @@ class SelfstockServiceTest(unittest.TestCase):
                 [("300830", "33")],
             )
         )
-        manager.refresh_selfstock_detail = Mock(side_effect=THSNetworkError("selfstock_detail", "boom"))
+        manager.refresh_selfstock_detail = Mock(
+            side_effect=THSNetworkError("selfstock_detail", "boom")
+        )
 
         group = manager.get_self_stocks(refresh=True)
 

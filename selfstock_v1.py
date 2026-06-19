@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from urllib.parse import urlencode
 
 import requests
@@ -16,15 +16,15 @@ from exceptions import THSAPIError, THSNetworkError
 
 
 def download_self_stocks_v1(
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Tuple[str, List[Tuple[str, str]]]:
+) -> tuple[str, list[tuple[str, str]]]:
     headers = {"User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo")}
     userid = cookies.get("userid")
     if userid:
         headers["userid"] = userid
-    params: Dict[str, str] = {"support_all": "0", "from": "thspc_hevo"}
+    params: dict[str, str] = {"support_all": "0", "from": "thspc_hevo"}
     try:
         response = requests.get(
             f"{SELF_STOCK_V1_BASE_URL}{SELF_STOCK_V1_QUERY_PATH}",
@@ -39,16 +39,18 @@ def download_self_stocks_v1(
 
     payload = response.json()
     if payload.get("status_code") != 0:
-        raise THSAPIError("我的自选(v1)", payload.get("status_msg", "未知错误"), str(payload.get("status_code")))
+        raise THSAPIError(
+            "我的自选(v1)", payload.get("status_msg", "未知错误"), str(payload.get("status_code"))
+        )
     data = payload.get("data", {})
     raw = data.get("selfstock", "")
     version = str(data.get("version", ""))
-    items: List[Tuple[str, str]] = []
+    items: list[tuple[str, str]] = []
     if raw:
         comma_idx = raw.rfind(",")
         if comma_idx >= 0:
             codes_segment = raw[:comma_idx]
-            types_segment = raw[comma_idx + 1:]
+            types_segment = raw[comma_idx + 1 :]
             codes = [c for c in codes_segment.split("|") if c]
             type_codes = [t for t in types_segment.split("|") if t]
             for i, code in enumerate(codes):
@@ -58,16 +60,16 @@ def download_self_stocks_v1(
 
 
 def modify_self_stocks_v1(
-    cookies: Dict[str, str],
-    stock_list: List[Tuple[str, str]],
+    cookies: dict[str, str],
+    stock_list: list[tuple[str, str]],
     version: str,
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     codes = "|".join(code for code, _ in stock_list)
     types = "|".join(mtype for _, mtype in stock_list)
     selfstock_value = f"{codes},{types}"
-    data: Dict[str, str] = {
+    data: dict[str, str] = {
         "selfstock": selfstock_value,
         "from": "thspc_hevo",
         "version": str(version),
@@ -95,5 +97,7 @@ def modify_self_stocks_v1(
 
     payload = response.json()
     if payload.get("status_code") != 0:
-        raise THSAPIError("我的自选(v1)", payload.get("status_msg", "未知错误"), str(payload.get("status_code")))
+        raise THSAPIError(
+            "我的自选(v1)", payload.get("status_msg", "未知错误"), str(payload.get("status_code"))
+        )
     return payload.get("data", {})

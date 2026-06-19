@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 from loguru import logger
 from requests import Response, Session
@@ -20,9 +20,9 @@ class ApiClient:
     def __init__(
         self,
         base_url: str,
-        cookies: Union[str, Dict[str, str], None] = None,
-        headers: Optional[Dict[str, str]] = None,
-        client: Optional[Session] = None,
+        cookies: str | dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        client: Session | None = None,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
     ) -> None:
         self.base_url: str = base_url.rstrip("/")
@@ -42,10 +42,12 @@ class ApiClient:
         if cookies:
             self.set_cookies(cookies)
 
-        self._default_headers: Dict[str, str] = headers.copy() if headers else DEFAULT_HEADERS.copy()
+        self._default_headers: dict[str, str] = (
+            headers.copy() if headers else DEFAULT_HEADERS.copy()
+        )
         logger.debug("默认请求头已设置: {}", self._default_headers)
 
-    def set_cookies(self, cookies_input: Union[str, Dict[str, str]]) -> None:
+    def set_cookies(self, cookies_input: str | dict[str, str]) -> None:
         if isinstance(cookies_input, str):
             parsed = parse_cookie_string(cookies_input)
         elif isinstance(cookies_input, dict):
@@ -61,13 +63,13 @@ class ApiClient:
         self._client.cookies.update(parsed)
         logger.info("客户端 cookies 已更新，共 {} 个。", len(parsed))
 
-    def get_cookies(self) -> Dict[str, str]:
+    def get_cookies(self) -> dict[str, str]:
         cookies = self._client.cookies.get_dict()
         logger.debug("获取当前 cookies 副本，共 {} 个。", len(cookies))
         return cookies
 
-    def _prepare_headers(self, additional_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        final_headers: Dict[str, str] = self._default_headers.copy()
+    def _prepare_headers(self, additional_headers: dict[str, str] | None = None) -> dict[str, str]:
+        final_headers: dict[str, str] = self._default_headers.copy()
         if additional_headers:
             final_headers.update(additional_headers)
         logger.debug("准备请求头: {}", final_headers)
@@ -77,18 +79,20 @@ class ApiClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[Dict[str, Any]] = None,
-        data: Optional[Dict[str, Any]] = None,
-        json_payload: Optional[Any] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        params: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        json_payload: Any | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         full_url: str = f"{self.base_url}/{endpoint.lstrip('/')}"
         request_headers = self._prepare_headers(headers)
 
         logger.info("发送 {} 请求到 {}", method, full_url)
-        logger.debug("请求参数: {}, 表单数据: {}, JSON载荷: {}", params, data, json_payload is not None)
+        logger.debug(
+            "请求参数: {}, 表单数据: {}, JSON载荷: {}", params, data, json_payload is not None
+        )
 
-        response: Optional[Response] = None
+        response: Response | None = None
         action = f"{method.upper()} {full_url}"
         try:
             response = self._client.request(
@@ -113,7 +117,13 @@ class ApiClient:
         except HTTPError as exc:
             status_code = exc.response.status_code if exc.response else "未知"
             resp_preview = exc.response.text[:200] if exc.response and exc.response.text else ""
-            logger.error("HTTP错误 ({} {}): 状态码 {}, 响应: {}...", method, full_url, status_code, resp_preview)
+            logger.error(
+                "HTTP错误 ({} {}): 状态码 {}, 响应: {}...",
+                method,
+                full_url,
+                status_code,
+                resp_preview,
+            )
             raise THSNetworkError(action, f"HTTP {status_code}: {resp_preview}") from exc
         except RequestException as exc:
             logger.error("请求错误 ({} {}): {}", method, full_url, exc)
@@ -122,25 +132,39 @@ class ApiClient:
             resp_text_preview = ""
             if response is not None and response.text:
                 resp_text_preview = response.text[:200]
-            logger.error("JSON解码错误 ({} {}): {}. 响应文本: {}...", method, full_url, exc, resp_text_preview)
+            logger.error(
+                "JSON解码错误 ({} {}): {}. 响应文本: {}...",
+                method,
+                full_url,
+                exc,
+                resp_text_preview,
+            )
             raise THSNetworkError(action, f"响应非 JSON: {exc}") from exc
 
-    def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
+    def get(
+        self, endpoint: str, params: dict[str, Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         return self.request("GET", endpoint, params=params, **kwargs)
 
-    def post_form_urlencoded(self, endpoint: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
-        custom_headers: Dict[str, str] = kwargs.pop("headers", {})
+    def post_form_urlencoded(
+        self, endpoint: str, data: dict[str, Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        custom_headers: dict[str, str] = kwargs.pop("headers", {})
         if "Content-Type" not in custom_headers and "content-type" not in custom_headers:
             custom_headers["Content-Type"] = "application/x-www-form-urlencoded; charset=utf-8"
         return self.request("POST", endpoint, data=data, headers=custom_headers, **kwargs)
 
-    def post_form_json(self, endpoint: str, data: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
-        custom_headers: Dict[str, str] = kwargs.pop("headers", {})
+    def post_form_json(
+        self, endpoint: str, data: dict[str, Any] | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
+        custom_headers: dict[str, str] = kwargs.pop("headers", {})
         if "Content-Type" not in custom_headers and "content-type" not in custom_headers:
             custom_headers["Content-Type"] = "application/json; charset=utf-8"
         return self.request("POST", endpoint, json_payload=data, headers=custom_headers, **kwargs)
 
-    def post_json(self, endpoint: str, json_payload: Optional[Any] = None, **kwargs: Any) -> Dict[str, Any]:
+    def post_json(
+        self, endpoint: str, json_payload: Any | None = None, **kwargs: Any
+    ) -> dict[str, Any]:
         return self.request("POST", endpoint, json_payload=json_payload, **kwargs)
 
     def close(self) -> None:
@@ -155,8 +179,8 @@ class ApiClient:
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[Any],
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
     ) -> None:
         self.close()

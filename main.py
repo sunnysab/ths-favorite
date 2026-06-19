@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import argparse
 import importlib
 import sys
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from loguru import logger
 
 from exceptions import THSAPIError, THSNetworkError
 from service import PortfolioManager
 
-_TABULATE_MODULE: Optional[Any] = None
+_TABULATE_MODULE: Any | None = None
 
 
-def _format_price(value: Optional[Any]) -> str:
+def _format_price(value: Any | None) -> str:
     if value is None:
         return "-"
     try:
@@ -112,7 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     global_parser = argparse.ArgumentParser(add_help=False)
     global_parser.add_argument("--username", default=argparse.SUPPRESS, help="登录账号")
     global_parser.add_argument("--password", default=argparse.SUPPRESS, help="登录密码")
-    global_parser.add_argument("--cookie-cache", default=argparse.SUPPRESS, help="自定义 cookies 缓存文件路径")
+    global_parser.add_argument(
+        "--cookie-cache", default=argparse.SUPPRESS, help="自定义 cookies 缓存文件路径"
+    )
 
     parser = argparse.ArgumentParser(
         description="同花顺自选股管理工具",
@@ -208,7 +209,7 @@ def apply_global_defaults(args: argparse.Namespace) -> None:
             setattr(args, key, value)
 
 
-def list_groups(manager: PortfolioManager, group_name: Optional[str] = None) -> None:
+def list_groups(manager: PortfolioManager, group_name: str | None = None) -> None:
     if group_name:
         list_stocks(manager, group_name)
         return

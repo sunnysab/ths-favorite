@@ -15,9 +15,10 @@ import hashlib
 import json
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, Optional, Union
+from typing import Any
 
 import requests
 from cryptography.hazmat.primitives import serialization
@@ -52,7 +53,7 @@ class SessionResult:
     userid: str
     sessionid: str
     signvalid: str
-    cookies: Dict[str, str]
+    cookies: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -78,7 +79,7 @@ class SessionClient:
         auth_base: str = AUTH_BASE,
         upass_base: str = UPASS_BASE,
         timeout: float = REQUEST_TIMEOUT,
-        http: Optional[requests.Session] = None,
+        http: requests.Session | None = None,
     ) -> None:
         if not username or not password:
             raise ValueError("username/password are required; anonymous login is not supported")
@@ -134,7 +135,9 @@ class SessionClient:
         sessionid = item.attrib.get("sessionid")
         account = item.attrib.get("account")
         if not all([userid, sessionid, account]):
-            raise RuntimeError("Login response missing required attributes (userid/sessionid/account)")
+            raise RuntimeError(
+                "Login response missing required attributes (userid/sessionid/account)"
+            )
         rsa_version = item.attrib.get("rsa_version") or rsa_info.rsa_version or RSA_VERSION_FALLBACK
         return LoginBundle(
             userid=userid,
@@ -170,7 +173,7 @@ class SessionClient:
             raise RuntimeError("signvalid not present inside passport payload")
         return signvalid
 
-    def _fetch_cookies(self, userid: str, sessionid: str, signvalid: str) -> Dict[str, str]:
+    def _fetch_cookies(self, userid: str, sessionid: str, signvalid: str) -> dict[str, str]:
         params = {"userid": userid, "sessionid": sessionid, "signvalid": signvalid}
         resp = self._http.get(
             f"{self._upass_base}{DOC_COOKIE_PATH}", params=params, timeout=self._timeout
@@ -185,7 +188,7 @@ class SessionClient:
             raise RuntimeError("docookie2.php returned no cookies")
         return cookies
 
-    def _call_xml(self, url: str, params: Dict[str, str], action: str) -> ET.Element:
+    def _call_xml(self, url: str, params: dict[str, str], action: str) -> ET.Element:
         try:
             resp = self._http.get(url, params=params, timeout=self._timeout)
             resp.raise_for_status()
@@ -200,12 +203,12 @@ class SessionClient:
         return base64.b64encode(encrypted).decode("ascii")
 
     @staticmethod
-    def _parse_passport(passport_blob: str) -> Dict[str, str]:
-        out: Dict[str, str] = {}
-        for chunk in passport_blob.split('|'):
-            if not chunk or '=' not in chunk:
+    def _parse_passport(passport_blob: str) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for chunk in passport_blob.split("|"):
+            if not chunk or "=" not in chunk:
                 continue
-            key, value = chunk.split('=', 1)
+            key, value = chunk.split("=", 1)
             out[key.strip()] = value.strip()
         return out
 
@@ -216,12 +219,12 @@ class SessionManager:
     def __init__(
         self,
         *,
-        cookies: Optional[Union[Dict[str, str], str]] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        cookie_cache_path: Optional[str] = None,
+        cookies: dict[str, str] | str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        cookie_cache_path: str | None = None,
         cookie_cache_ttl_seconds: int = COOKIE_CACHE_TTL_SECONDS,
-        login_factory: Optional[Callable[[str, str], SessionResult]] = None,
+        login_factory: Callable[[str, str], SessionResult] | None = None,
     ) -> None:
         self._explicit_cookies = self._normalize_cookies(cookies)
         self._username = username
@@ -229,17 +232,17 @@ class SessionManager:
         self._cookie_cache_path = cookie_cache_path or COOKIE_CACHE_FILE
         self._cookie_cache_ttl = cookie_cache_ttl_seconds
         self._login_factory = login_factory or create_session
-        self._resolved_cache: Optional[Dict[str, str]] = None
-        self._last_session_result: Optional[SessionResult] = None
+        self._resolved_cache: dict[str, str] | None = None
+        self._last_session_result: SessionResult | None = None
 
-    def resolve(self) -> Optional[Dict[str, str]]:
+    def resolve(self) -> dict[str, str] | None:
         if self._explicit_cookies is not None:
             return self._explicit_cookies.copy()
         if self._resolved_cache is None:
             self._resolved_cache = self._resolve_from_inputs()
         return self._resolved_cache.copy() if self._resolved_cache else None
 
-    def get_auth_params(self) -> Dict[str, str]:
+    def get_auth_params(self) -> dict[str, str]:
         sr = self._last_session_result
         if sr:
             expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
@@ -256,7 +259,7 @@ class SessionManager:
                 return cached
 
         cache_data = load_cookie_cache_data(self._cookie_cache_path)
-        latest_cached: Optional[Dict[str, str]] = None
+        latest_cached: dict[str, str] | None = None
         latest_ts = 0.0
         for cache_key, entry in cache_data.items():
             if not cache_key.startswith("credentials::"):
@@ -277,7 +280,7 @@ class SessionManager:
 
         return self._extract_sessionid_from_cookies(cache_data)
 
-    def _extract_sessionid_from_cookies(self, cache_data: Dict[str, Any]) -> Dict[str, str]:
+    def _extract_sessionid_from_cookies(self, cache_data: dict[str, Any]) -> dict[str, str]:
         from blockstock import extract_auth_params_from_cookies
 
         for _k, entry in cache_data.items():
@@ -292,12 +295,12 @@ class SessionManager:
 
         raise THSAPIError("认证", "multiStorage 需要有效的登录凭据，请先登录")
 
-    def _resolve_from_inputs(self) -> Optional[Dict[str, str]]:
+    def _resolve_from_inputs(self) -> dict[str, str] | None:
         if self._username is None and self._password is None:
-            return self._read_latest_cached_cookies('credentials::')
+            return self._read_latest_cached_cookies("credentials::")
         return self._resolve_credentials_flow()
 
-    def _resolve_credentials_flow(self) -> Optional[Dict[str, str]]:
+    def _resolve_credentials_flow(self) -> dict[str, str] | None:
         if self._username and self._password:
             cache_key = self._credentials_cache_key(self._username)
             return self._fetch_with_cache(
@@ -327,8 +330,8 @@ class SessionManager:
     def _fetch_with_cache(
         self,
         cache_key: str,
-        loader: Callable[[], Optional[Dict[str, str]]],
-    ) -> Optional[Dict[str, str]]:
+        loader: Callable[[], dict[str, str] | None],
+    ) -> dict[str, str] | None:
         cached = read_cached_cookies(self._cookie_cache_path, cache_key, self._cookie_cache_ttl)
         if cached:
             return cached
@@ -337,7 +340,7 @@ class SessionManager:
             write_cookie_cache(self._cookie_cache_path, cache_key, fresh)
         return fresh
 
-    def _load_from_credentials(self, username: str, password: str) -> Optional[Dict[str, str]]:
+    def _load_from_credentials(self, username: str, password: str) -> dict[str, str] | None:
         cache_key = self._credentials_cache_key(username)
         session = self._login_factory(username, password)
         self._last_session_result = session
@@ -355,16 +358,16 @@ class SessionManager:
         )
         return session.cookies
 
-    def _read_latest_cached_cookies(self, cache_key_prefix: str) -> Optional[Dict[str, str]]:
+    def _read_latest_cached_cookies(self, cache_key_prefix: str) -> dict[str, str] | None:
         cache_data = load_cookie_cache_data(self._cookie_cache_path)
-        latest_timestamp: Optional[float] = None
-        latest_cookies: Optional[Dict[str, str]] = None
+        latest_timestamp: float | None = None
+        latest_cookies: dict[str, str] | None = None
 
         for cache_key, entry in cache_data.items():
             if not cache_key.startswith(cache_key_prefix) or not isinstance(entry, dict):
                 continue
 
-            timestamp = entry.get('timestamp')
+            timestamp = entry.get("timestamp")
             try:
                 timestamp_value = float(timestamp)
             except (TypeError, ValueError):
@@ -373,7 +376,7 @@ class SessionManager:
             if time.time() - timestamp_value > self._cookie_cache_ttl:
                 continue
 
-            cookies_payload = entry.get('cookies')
+            cookies_payload = entry.get("cookies")
             if not isinstance(cookies_payload, dict) or not cookies_payload:
                 continue
 
@@ -389,7 +392,7 @@ class SessionManager:
         return f"credentials::{digest}"
 
     @staticmethod
-    def _normalize_cookies(cookies_input: Optional[Union[Dict[str, str], str]]) -> Optional[Dict[str, str]]:
+    def _normalize_cookies(cookies_input: dict[str, str] | str | None) -> dict[str, str] | None:
         if cookies_input is None:
             return None
         if isinstance(cookies_input, dict):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import requests
 
@@ -13,13 +13,13 @@ from config import (
     MULTI_STORAGE_URL,
     SELF_STOCK_HTTP_TIMEOUT,
 )
-from exceptions import THSAPIError, THSNetworkError
+from exceptions import THSNetworkError
 
 
-def extract_auth_params_from_cookies(cookies: Dict[str, str]) -> Dict[str, str]:
+def extract_auth_params_from_cookies(cookies: dict[str, str]) -> dict[str, str]:
+    import time
     import urllib.parse as _urlparse
     from datetime import datetime
-    import time
 
     sessionid = ""
     user_raw = cookies.get("user", "")
@@ -34,7 +34,9 @@ def extract_auth_params_from_cookies(cookies: Dict[str, str]) -> Dict[str, str]:
     return {"userid": cookies.get("userid", ""), "sessionid": sessionid, "expires": expires}
 
 
-def _encode_blockstock_payload(group_name: str, group_type: int, stock_list: List[Tuple[str, str]]) -> bytes:
+def _encode_blockstock_payload(
+    group_name: str, group_type: int, stock_list: list[tuple[str, str]]
+) -> bytes:
     gbk_bytes = group_name.encode("gbk")
     group_id_b64 = base64.b64encode(gbk_bytes).decode("ascii")
 
@@ -42,20 +44,16 @@ def _encode_blockstock_payload(group_name: str, group_type: int, stock_list: Lis
     types = "|".join(mtype for _, mtype in stock_list)
     stock_str = f"{codes},{types}"
 
-    group_data = (
-        field_bytes(1, group_id_b64.encode("ascii"))
-        + field_bytes(3, stock_str.encode("ascii"))
+    group_data = field_bytes(1, group_id_b64.encode("ascii")) + field_bytes(
+        3, stock_str.encode("ascii")
     )
-    group_payload = (
-        field_bytes(1, field_varint(1, group_type))
-        + field_bytes(3, group_data)
-    )
+    group_payload = field_bytes(1, field_varint(1, group_type)) + field_bytes(3, group_data)
     return field_bytes(1, group_payload)
 
 
-def _parse_blockstock_download(data: bytes) -> Dict[str, Any]:
+def _parse_blockstock_download(data: bytes) -> dict[str, Any]:
     offset = 0
-    result: Dict[str, Any] = {"count": 0, "version": 0, "groups": []}
+    result: dict[str, Any] = {"count": 0, "version": 0, "groups": []}
 
     while offset < len(data):
         tag, offset = decode_varint(data, offset)
@@ -79,9 +77,9 @@ def _parse_blockstock_download(data: bytes) -> Dict[str, Any]:
     return result
 
 
-def _parse_group_payload(data: bytes) -> Dict[str, Any]:
+def _parse_group_payload(data: bytes) -> dict[str, Any]:
     offset = 0
-    result: Dict[str, Any] = {"group_type": 0, "group_name": "", "stock_list": []}
+    result: dict[str, Any] = {"group_type": 0, "group_name": "", "stock_list": []}
 
     while offset < len(data):
         tag, offset = decode_varint(data, offset)
@@ -115,9 +113,9 @@ def _parse_group_payload(data: bytes) -> Dict[str, Any]:
     return result
 
 
-def _parse_group_data(data: bytes) -> Dict[str, Any]:
+def _parse_group_data(data: bytes) -> dict[str, Any]:
     offset = 0
-    result: Dict[str, Any] = {"group_id": None, "stock_list": []}
+    result: dict[str, Any] = {"group_id": None, "stock_list": []}
 
     while offset < len(data):
         tag, offset = decode_varint(data, offset)
@@ -135,10 +133,10 @@ def _parse_group_data(data: bytes) -> Dict[str, Any]:
                 comma_idx = raw.rfind(",")
                 if comma_idx >= 0:
                     codes_segment = raw[:comma_idx]
-                    types_segment = raw[comma_idx + 1:]
+                    types_segment = raw[comma_idx + 1 :]
                     codes = [c for c in codes_segment.split("|") if c]
                     type_codes = [t for t in types_segment.split("|") if t]
-                    stock_list: List[Tuple[str, str]] = []
+                    stock_list: list[tuple[str, str]] = []
                     for i, code in enumerate(codes):
                         mtype = type_codes[i] if i < len(type_codes) else ""
                         stock_list.append((code, mtype))
@@ -148,13 +146,13 @@ def _parse_group_data(data: bytes) -> Dict[str, Any]:
 
 
 def download_blockstock(
-    auth_params: Dict[str, str],
-    cookies: Dict[str, str],
+    auth_params: dict[str, str],
+    cookies: dict[str, str],
     *,
     storepath: str = "/",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, Any]:
-    data: Dict[str, str] = {
+) -> dict[str, Any]:
+    data: dict[str, str] = {
         "reqtype": "download",
         "userid": auth_params.get("userid", ""),
         "storepath": storepath,
@@ -185,19 +183,19 @@ def download_blockstock(
 
 
 def upload_blockstock(
-    auth_params: Dict[str, str],
-    cookies: Dict[str, str],
+    auth_params: dict[str, str],
+    cookies: dict[str, str],
     group_name: str,
     group_type: int,
-    stock_list: List[Tuple[str, str]],
+    stock_list: list[tuple[str, str]],
     version: str,
     *,
     storepath: str = "/",
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     payload_bytes = _encode_blockstock_payload(group_name, group_type, stock_list)
 
-    data: Dict[str, str] = {
+    data: dict[str, str] = {
         "appname": BLOCKSTOCK_APPNAME,
         "reqtype": "upload",
         "version": str(version),

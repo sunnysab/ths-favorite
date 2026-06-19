@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -24,10 +24,10 @@ def _extract_self_stock_v2_result(payload: Any, action_name: str) -> Any:
 
 
 def download_self_stocks_v2(
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
+) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     headers = {
         "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
     }
@@ -45,7 +45,7 @@ def download_self_stocks_v2(
     result = _extract_self_stock_v2_result(payload, "我的自选")
     if not isinstance(result, list):
         raise THSAPIError("我的自选", "响应缺少 result 列表")
-    items: List[Tuple[str, str]] = []
+    items: list[tuple[str, str]] = []
     for entry in result:
         if not isinstance(entry, dict):
             raise THSAPIError("我的自选", "result 条目格式不正确")
@@ -58,12 +58,12 @@ def download_self_stocks_v2(
 
 
 def modify_self_stock_v2(
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
     op: str,
     stockcode: str,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     try:
         response = requests.get(
             f"{SELF_STOCK_V2_BASE_URL}{SELF_STOCK_V2_MODIFY_PATH}",
@@ -80,20 +80,20 @@ def modify_self_stock_v2(
 
 
 def download_self_stocks(
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
+) -> tuple[dict[str, Any], list[tuple[str, str]]]:
     return download_self_stocks_v2(cookies, timeout=timeout)
 
 
 def upload_self_stocks(
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
-    op: Optional[str] = None,
-    stockcode: Optional[str] = None,
+    op: str | None = None,
+    stockcode: str | None = None,
     timeout: float = SELF_STOCK_HTTP_TIMEOUT,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if op is not None and stockcode is not None:
         return modify_self_stock_v2(cookies, op=op, stockcode=stockcode, timeout=timeout)
     raise THSAPIError("我的自选", "仅支持基于 cookies 的新版自选接口，请提供 op 和 stockcode")

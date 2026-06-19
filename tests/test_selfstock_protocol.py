@@ -30,7 +30,9 @@ class SelfstockProtocolTest(unittest.TestCase):
     @patch("api.requests.get")
     def test_modify_self_stock_v2_add_uses_stockcode_query(self, mock_get):
         mock_get.return_value = Mock(
-            json=Mock(return_value={"errorCode": 0, "errorMsg": "修改成功", "result": {}, "isT": True}),
+            json=Mock(
+                return_value={"errorCode": 0, "errorMsg": "修改成功", "result": {}, "isT": True}
+            ),
             raise_for_status=Mock(),
         )
 
@@ -43,7 +45,9 @@ class SelfstockProtocolTest(unittest.TestCase):
     @patch("api.requests.get")
     def test_modify_self_stock_v2_del_uses_stockcode_query(self, mock_get):
         mock_get.return_value = Mock(
-            json=Mock(return_value={"errorCode": 0, "errorMsg": "修改成功", "result": {}, "isT": True}),
+            json=Mock(
+                return_value={"errorCode": 0, "errorMsg": "修改成功", "result": {}, "isT": True}
+            ),
             raise_for_status=Mock(),
         )
 
@@ -56,7 +60,9 @@ class SelfstockProtocolTest(unittest.TestCase):
     @patch("api.requests.get")
     def test_download_self_stocks_raises_api_error_on_nonzero_error_code(self, mock_get):
         mock_get.return_value = Mock(
-            json=Mock(return_value={"errorCode": 1001, "errorMsg": "失败", "result": [], "isT": True}),
+            json=Mock(
+                return_value={"errorCode": 1001, "errorMsg": "失败", "result": [], "isT": True}
+            ),
             raise_for_status=Mock(),
         )
 

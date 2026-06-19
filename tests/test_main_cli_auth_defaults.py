@@ -16,7 +16,9 @@ class MainCliAuthDefaultsTest(unittest.TestCase):
 
         self.assertFalse(hasattr(args, "auth_method"))
 
-    def test_preserves_credentials_args_when_username_and_password_are_provided_after_subcommand(self):
+    def test_preserves_credentials_args_when_username_and_password_are_provided_after_subcommand(
+        self,
+    ):
         args = parse_args(["list", "--username", "user", "--password", "secret"])
 
         self.assertEqual(args.username, "user")

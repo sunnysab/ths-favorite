@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 
 class THSError(Exception):
     """Base exception for all custom THS-related errors."""
@@ -10,7 +8,7 @@ class THSError(Exception):
 class THSAPIError(THSError):
     """Raised when the remote THS API reports a business failure."""
 
-    def __init__(self, action_name: str, message: str, code: Optional[str] = None) -> None:
+    def __init__(self, action_name: str, message: str, code: str | None = None) -> None:
         self.action_name = action_name
         self.code = code
         detail = message

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict
-
-DEFAULT_HEADERS: Dict[str, str] = {
+DEFAULT_HEADERS: dict[str, str] = {
     "User-Agent": (
         "Hexin_Gphone/11.28.03 (Royal Flush) hxtheme/0 innerversion/G037.09.028.1.32 "
         "followPhoneSystemTheme/0 userid/000000000 getHXAPPAccessibilityMode/0 "

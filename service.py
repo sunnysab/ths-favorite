@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Any
 
 from loguru import logger
 
@@ -8,9 +9,8 @@ from api import (
     FavoriteAPI,
     download_selfstock_detail,
 )
-from blockstock import download_blockstock, upload_blockstock
-from selfstock_v1 import download_self_stocks_v1, modify_self_stocks_v1
 from auth import SessionManager
+from blockstock import download_blockstock, upload_blockstock
 from client import ApiClient
 from config import (
     API_BASE_URL,
@@ -25,6 +25,7 @@ from config import (
 from constant import market_abbr, market_code
 from exceptions import THSAPIError, THSNetworkError
 from models import StockGroup, StockItem
+from selfstock_v1 import download_self_stocks_v1, modify_self_stocks_v1
 from storage import (
     load_groups_cache,
     load_self_stock_cache,
@@ -38,12 +39,12 @@ class PortfolioManager:
 
     def __init__(
         self,
-        cookies: Union[str, Dict[str, str], None] = None,
-        api_client: Optional[ApiClient] = None,
+        cookies: str | dict[str, str] | None = None,
+        api_client: ApiClient | None = None,
         *,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        cookie_cache_path: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
+        cookie_cache_path: str | None = None,
         cookie_cache_ttl_seconds: int = COOKIE_CACHE_TTL_SECONDS,
     ) -> None:
         """Initialize the manager.
@@ -57,13 +58,15 @@ class PortfolioManager:
             cookie_cache_ttl_seconds: Custom TTL (seconds) for cached cookies.
         """
         self._group_cache_path: str = GROUP_CACHE_FILE
-        self._groups_cache: Dict[str, StockGroup] = load_groups_cache(self._group_cache_path)
+        self._groups_cache: dict[str, StockGroup] = load_groups_cache(self._group_cache_path)
         self._self_stock_cache_path: str = SELF_STOCK_CACHE_FILE
-        self._self_stock_cache: Optional[StockGroup] = load_self_stock_cache(self._self_stock_cache_path)
-        self._current_version: Optional[Union[str, int]] = None
-        self._selfstock_detail_version: Optional[str] = None
-        self._selfstock_detail_map: Dict[Tuple[str, str], Dict[str, Any]] = {}
-        self._selfstock_detail_raw: List[Dict[str, Any]] = []
+        self._self_stock_cache: StockGroup | None = load_self_stock_cache(
+            self._self_stock_cache_path
+        )
+        self._current_version: str | int | None = None
+        self._selfstock_detail_version: str | None = None
+        self._selfstock_detail_map: dict[tuple[str, str], dict[str, Any]] = {}
+        self._selfstock_detail_raw: list[dict[str, Any]] = []
 
         self._session_manager = SessionManager(
             cookies=cookies,
@@ -73,7 +76,7 @@ class PortfolioManager:
             cookie_cache_ttl_seconds=cookie_cache_ttl_seconds,
         )
         resolved_cookies = self._session_manager.resolve()
-        self._auth_params: Optional[Dict[str, str]] = None
+        self._auth_params: dict[str, str] | None = None
         try:
             self._auth_params = self._session_manager.get_auth_params()
         except Exception:
@@ -94,7 +97,7 @@ class PortfolioManager:
 
         self._api = FavoriteAPI(self.api_client)
 
-    def set_cookies(self, cookies_input: Union[str, Dict[str, str]]) -> None:
+    def set_cookies(self, cookies_input: str | dict[str, str]) -> None:
         logger.info("通过 PortfolioManager 设置 API 客户端 cookies...")
         self.api_client.set_cookies(cookies_input)
 
@@ -103,7 +106,7 @@ class PortfolioManager:
         use_cache: bool = False,
         include_self_stocks: bool = False,
         self_stocks_name: str = SELF_STOCK_DEFAULT_NAME,
-    ) -> Dict[str, StockGroup]:
+    ) -> dict[str, StockGroup]:
         logger.info("开始获取所有自选股分组信息...")
         try:
             raw_data = self._api.query_groups()
@@ -117,18 +120,18 @@ class PortfolioManager:
         parsed_groups = self._parse_group_list(raw_data)
         self._refresh_selfstock_detail_best_effort(context="获取分组")
 
-        formatted: Dict[str, StockGroup] = {}
+        formatted: dict[str, StockGroup] = {}
         for group_raw in parsed_groups:
-            name: Optional[str] = group_raw.get("name")
-            group_id: Optional[str] = group_raw.get("id")
+            name: str | None = group_raw.get("name")
+            group_id: str | None = group_raw.get("id")
             if not name or not group_id:
                 logger.warning("解析时发现无名称或ID的分组原始数据，已跳过: {}", group_raw)
                 continue
 
-            items: List[StockItem] = []
+            items: list[StockItem] = []
             for detail in group_raw.get("item_details", []):
-                item_code: Optional[str] = detail.get("code")
-                api_type: Optional[str] = detail.get("api_type")
+                item_code: str | None = detail.get("code")
+                api_type: str | None = detail.get("api_type")
                 market_short = market_abbr(api_type) if api_type else None
                 if item_code:
                     items.append(StockItem(code=item_code, market=market_short))
@@ -147,17 +150,20 @@ class PortfolioManager:
     def get_self_stocks(
         self,
         refresh: bool = False,
-        name: Optional[str] = None,
+        name: str | None = None,
     ) -> StockGroup:
         group_name = name or SELF_STOCK_DEFAULT_NAME
         if not refresh and self._self_stock_cache is not None:
-            return StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=list(self._self_stock_cache.items))
+            return StockGroup(
+                name=group_name,
+                group_id=SELF_STOCK_GROUP_ID,
+                items=list(self._self_stock_cache.items),
+            )
 
         _, items = self._api.download_self_stocks()
         self._refresh_selfstock_detail_best_effort(context="获取我的自选")
         parsed_items = [
-            StockItem(code=code, market=market_abbr(market_id))
-            for code, market_id in items
+            StockItem(code=code, market=market_abbr(market_id)) for code, market_id in items
         ]
         self._attach_selfstock_metadata(parsed_items)
         group = StockGroup(name=group_name, group_id=SELF_STOCK_GROUP_ID, items=parsed_items)
@@ -169,7 +175,7 @@ class PortfolioManager:
         save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
         return group
 
-    def add_item_to_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
+    def add_item_to_group(self, group_identifier: str, symbol: str | list[str]) -> dict[str, Any]:
         logger.info("尝试添加项目 '{}' 到分组 '{}'...", symbol, group_identifier)
         if isinstance(symbol, list):
             if not symbol:
@@ -187,15 +193,17 @@ class PortfolioManager:
         item_code, api_item_type = self._parse_symbol(symbol)
         market_short = market_abbr(api_item_type)
 
-        def api_call(version: str) -> Dict[str, Any]:
+        def api_call(version: str) -> dict[str, Any]:
             return self._api.add_item(target_group_id, item_code, api_item_type, version)
 
-        def update_cache(_: Dict[str, Any]) -> None:
+        def update_cache(_: dict[str, Any]) -> None:
             self._add_item_to_local_cache(target_group_id, item_code, market_short)
 
         return self._perform_write_operation("添加股票", api_call, update_cache)
 
-    def delete_item_from_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
+    def delete_item_from_group(
+        self, group_identifier: str, symbol: str | list[str]
+    ) -> dict[str, Any]:
         logger.info("尝试删除项目 '{}' 从分组 '{}'...", symbol, group_identifier)
         if isinstance(symbol, list):
             if not symbol:
@@ -213,40 +221,40 @@ class PortfolioManager:
         item_code, api_item_type = self._parse_symbol(symbol)
         market_short = market_abbr(api_item_type)
 
-        def api_call(version: str) -> Dict[str, Any]:
+        def api_call(version: str) -> dict[str, Any]:
             return self._api.delete_item(target_group_id, item_code, api_item_type, version)
 
-        def update_cache(_: Dict[str, Any]) -> None:
+        def update_cache(_: dict[str, Any]) -> None:
             self._remove_item_from_local_cache(target_group_id, item_code, market_short)
 
         return self._perform_write_operation("删除股票", api_call, update_cache)
 
-    def add_group(self, group_name: str) -> Dict[str, Any]:
+    def add_group(self, group_name: str) -> dict[str, Any]:
         if not group_name:
             raise THSAPIError("添加分组", "分组名称不能为空")
 
-        def api_call(version: str) -> Dict[str, Any]:
+        def api_call(version: str) -> dict[str, Any]:
             return self._api.add_group(group_name, version)
 
-        def update_cache(response: Dict[str, Any]) -> None:
+        def update_cache(response: dict[str, Any]) -> None:
             self._add_group_to_local_cache(group_name, response)
 
         return self._perform_write_operation("添加分组", api_call, update_cache)
 
-    def delete_group(self, group_identifier: str) -> Dict[str, Any]:
+    def delete_group(self, group_identifier: str) -> dict[str, Any]:
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("删除分组", f"未能找到 '{group_identifier}'")
 
-        def api_call(version: str) -> Dict[str, Any]:
+        def api_call(version: str) -> dict[str, Any]:
             return self._api.delete_group(target_group_id, version)
 
-        def update_cache(_: Dict[str, Any]) -> None:
+        def update_cache(_: dict[str, Any]) -> None:
             self._remove_group_from_local_cache(target_group_id)
 
         return self._perform_write_operation("删除分组", api_call, update_cache)
 
-    def share_group(self, group_identifier: str, valid_time: int) -> Dict[str, Any]:
+    def share_group(self, group_identifier: str, valid_time: int) -> dict[str, Any]:
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
             raise THSAPIError("分享分组", f"未能找到 '{group_identifier}'")
@@ -267,9 +275,9 @@ class PortfolioManager:
     def _perform_write_operation(
         self,
         action_name: str,
-        api_call_factory: Callable[[str], Dict[str, Any]],
-        cache_updater: Callable[[Dict[str, Any]], None],
-    ) -> Dict[str, Any]:
+        api_call_factory: Callable[[str], dict[str, Any]],
+        cache_updater: Callable[[dict[str, Any]], None],
+    ) -> dict[str, Any]:
         for attempt in range(2):
             version = self._ensure_version_available()
             try:
@@ -289,7 +297,7 @@ class PortfolioManager:
             return result
         raise THSAPIError(action_name, "操作在多次重试后仍失败，请稍后再试。")
 
-    def refresh_selfstock_detail(self, force: bool = False) -> Optional[str]:
+    def refresh_selfstock_detail(self, force: bool = False) -> str | None:
         if not force and self._selfstock_detail_map:
             return self._selfstock_detail_version
 
@@ -299,7 +307,7 @@ class PortfolioManager:
             logger.warning("刷新 selfstock_detail 失败：cookies 中缺少 userid。")
             return None
         version, detail_list = download_selfstock_detail(userid, cookies)
-        index: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        index: dict[tuple[str, str], dict[str, Any]] = {}
         for entry in detail_list:
             code = entry.get("C")
             market_type = entry.get("M")
@@ -308,7 +316,7 @@ class PortfolioManager:
             market_short = market_abbr(market_type) if market_type else None
             key = self._detail_key(code, market_short)
             price_raw = entry.get("P")
-            price_value: Optional[float] = None
+            price_value: float | None = None
             if price_raw not in (None, ""):
                 try:
                     price_value = float(price_raw)
@@ -335,7 +343,7 @@ class PortfolioManager:
         except (THSAPIError, THSNetworkError):
             logger.warning("{} 时刷新 selfstock_detail 失败，继续返回基础结果。", context)
 
-    def get_item_snapshot(self, symbol: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
+    def get_item_snapshot(self, symbol: str, *, refresh: bool = False) -> dict[str, Any] | None:
         if refresh or not self._selfstock_detail_map:
             self.refresh_selfstock_detail(force=True)
 
@@ -344,7 +352,9 @@ class PortfolioManager:
 
         code_part, market_suffix = symbol.rsplit(".", 1)
         key = self._detail_key(code_part, market_suffix)
-        meta = self._selfstock_detail_map.get(key) or self._selfstock_detail_map.get((code_part, ""))
+        meta = self._selfstock_detail_map.get(key) or self._selfstock_detail_map.get(
+            (code_part, "")
+        )
         if not meta:
             return None
         return {
@@ -364,18 +374,18 @@ class PortfolioManager:
             self.api_client.close()
         logger.info("PortfolioManager 服务已关闭。")
 
-    def __enter__(self) -> "PortfolioManager":
+    def __enter__(self) -> PortfolioManager:
         return self
 
     def __exit__(
         self,
-        exc_type: Optional[type],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[Any],
+        exc_type: type | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
     ) -> None:
         self.close()
 
-    def _get_group_id_by_identifier(self, group_identifier: str) -> Optional[str]:
+    def _get_group_id_by_identifier(self, group_identifier: str) -> str | None:
         if not self._groups_cache:
             self.get_all_groups(use_cache=False)
         for group_obj in self._groups_cache.values():
@@ -385,7 +395,7 @@ class PortfolioManager:
             return self._groups_cache[group_identifier].group_id
         return None
 
-    def _get_group_entry_by_id(self, group_id: str) -> Optional[Tuple[str, StockGroup]]:
+    def _get_group_entry_by_id(self, group_id: str) -> tuple[str, StockGroup] | None:
         if not group_id:
             return None
         if not self._groups_cache:
@@ -395,7 +405,9 @@ class PortfolioManager:
                 return name, group_obj
         return None
 
-    def _add_item_to_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
+    def _add_item_to_local_cache(
+        self, group_id: str, item_code: str, market_short: str | None
+    ) -> None:
         entry = self._get_group_entry_by_id(group_id)
         if not entry:
             logger.warning("未在本地缓存中找到 group_id={}，触发全量刷新以保持一致。", group_id)
@@ -408,7 +420,9 @@ class PortfolioManager:
         group.items.append(new_item)
         self._persist_groups_cache()
 
-    def _remove_item_from_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
+    def _remove_item_from_local_cache(
+        self, group_id: str, item_code: str, market_short: str | None
+    ) -> None:
         entry = self._get_group_entry_by_id(group_id)
         if not entry:
             logger.warning("删除股票成功但 group_id={} 未在缓存中找到，触发全量刷新。", group_id)
@@ -421,7 +435,7 @@ class PortfolioManager:
         if len(group.items) != original_len:
             self._persist_groups_cache()
 
-    def _add_group_to_local_cache(self, group_name: str, response: Optional[Dict[str, Any]]) -> None:
+    def _add_group_to_local_cache(self, group_name: str, response: dict[str, Any] | None) -> None:
         group_id = self._extract_group_id_from_response(response)
         if not group_id:
             logger.warning("添加分组成功但未拿到新分组ID，执行全量刷新以同步状态。")
@@ -448,7 +462,7 @@ class PortfolioManager:
             save_self_stock_cache(self._self_stock_cache_path, self._self_stock_cache)
 
     @staticmethod
-    def _extract_group_id_from_response(response: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _extract_group_id_from_response(response: dict[str, Any] | None) -> str | None:
         if not isinstance(response, dict):
             return None
         for key in ("group_id", "groupid", "id"):
@@ -461,13 +475,17 @@ class PortfolioManager:
     def _is_version_conflict_error(error: THSAPIError) -> bool:
         message = str(error)
         lowered = message.lower()
-        if "version" in lowered and any(token in lowered for token in ("outdated", "mismatch", "refresh", "expired")):
+        if "version" in lowered and any(
+            token in lowered for token in ("outdated", "mismatch", "refresh", "expired")
+        ):
             return True
-        if "版本" in message and any(token in message for token in ("过期", "失效", "不一致", "不匹配", "刷新")):
+        if "版本" in message and any(
+            token in message for token in ("过期", "失效", "不一致", "不匹配", "刷新")
+        ):
             return True
         return False
 
-    def _parse_symbol(self, symbol: str) -> Tuple[str, str]:
+    def _parse_symbol(self, symbol: str) -> tuple[str, str]:
         if "." not in symbol:
             raise THSAPIError("解析股票代码", f"股票代码格式无效: '{symbol}'")
         code_part, market_suffix_part = symbol.rsplit(".", 1)
@@ -476,7 +494,7 @@ class PortfolioManager:
             raise THSAPIError("解析股票代码", f"未知的市场后缀: '{market_suffix_part}'")
         return code_part, api_market_type_code
 
-    def _update_version_from_response_data(self, response_data: Optional[Dict[str, Any]]) -> None:
+    def _update_version_from_response_data(self, response_data: dict[str, Any] | None) -> None:
         if response_data and isinstance(response_data, dict) and "version" in response_data:
             new_version = response_data["version"]
             logger.debug("自选列表版本号从 {} 更新为 {}", self._current_version, new_version)
@@ -490,18 +508,16 @@ class PortfolioManager:
                 raise THSAPIError("版本检查", "仍未能获取有效的自选列表版本号")
         return str(self._current_version)
 
-    def _parse_group_list(self, raw_data: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        parsed_groups_raw_info: List[Dict[str, Any]] = []
+    def _parse_group_list(self, raw_data: dict[str, Any] | None) -> list[dict[str, Any]]:
+        parsed_groups_raw_info: list[dict[str, Any]] = []
         if not raw_data or not isinstance(raw_data, dict) or "group_list" not in raw_data:
             return parsed_groups_raw_info
         api_group_list = raw_data.get("group_list", [])
         for i, group_dict_from_api in enumerate(api_group_list):
             if not isinstance(group_dict_from_api, dict):
-                logger.warning(
-                    "API返回的group_list中第 %d 个元素不是预期的字典类型，已跳过", i + 1
-                )
+                logger.warning("API返回的group_list中第 %d 个元素不是预期的字典类型，已跳过", i + 1)
                 continue
-            current_group_parsed_info: Dict[str, Any] = {
+            current_group_parsed_info: dict[str, Any] = {
                 "id": group_dict_from_api.get("id"),
                 "name": group_dict_from_api.get("name"),
                 "api_type_code": group_dict_from_api.get("type"),
@@ -509,13 +525,15 @@ class PortfolioManager:
                 "attrs": group_dict_from_api.get("attrs", {}),
                 "item_details": [],
             }
-            content_str: Optional[str] = group_dict_from_api.get("content")
+            content_str: str | None = group_dict_from_api.get("content")
             if isinstance(content_str, str) and content_str:
                 parts = content_str.split(",", 1)
                 item_codes_segment = parts[0]
                 api_item_type_codes_segment = parts[1] if len(parts) > 1 else ""
                 item_codes_list = [code for code in item_codes_segment.split("|") if code]
-                api_item_type_codes_list = [tc for tc in api_item_type_codes_segment.split("|") if tc]
+                api_item_type_codes_list = [
+                    tc for tc in api_item_type_codes_segment.split("|") if tc
+                ]
                 for j, item_code_str in enumerate(item_codes_list):
                     api_item_type_code = (
                         api_item_type_codes_list[j] if j < len(api_item_type_codes_list) else None
@@ -529,7 +547,7 @@ class PortfolioManager:
             parsed_groups_raw_info.append(current_group_parsed_info)
         return parsed_groups_raw_info
 
-    def _attach_selfstock_metadata(self, favorites: List[StockItem]) -> None:
+    def _attach_selfstock_metadata(self, favorites: list[StockItem]) -> None:
         if not self._selfstock_detail_map:
             return
         for item in favorites:
@@ -545,7 +563,7 @@ class PortfolioManager:
                 object.__setattr__(item, "added_at", meta["timestamp"])
 
     @staticmethod
-    def _detail_key(code: str, market_short: Optional[str]) -> Tuple[str, str]:
+    def _detail_key(code: str, market_short: str | None) -> tuple[str, str]:
         return (code, (market_short or "").upper())
 
     def _is_self_stock_identifier(self, group_identifier: str) -> bool:
@@ -553,9 +571,11 @@ class PortfolioManager:
             return True
         if group_identifier == SELF_STOCK_DEFAULT_NAME:
             return True
-        return self._self_stock_cache is not None and group_identifier == self._self_stock_cache.name
+        return (
+            self._self_stock_cache is not None and group_identifier == self._self_stock_cache.name
+        )
 
-    def _mutate_self_stock(self, symbol: str, *, action: str) -> Dict[str, Any]:
+    def _mutate_self_stock(self, symbol: str, *, action: str) -> dict[str, Any]:
         current_group = self.get_self_stocks(refresh=False)
         item_code, api_item_type = self._parse_symbol(symbol)
         updated_items = list(current_group.items)
@@ -580,18 +600,17 @@ class PortfolioManager:
         self._persist_self_stock_cache()
         return result
 
-
-    def _batch_mutate_self_stock(self, symbols: List[str], *, action: str) -> Dict[str, Any]:
+    def _batch_mutate_self_stock(self, symbols: list[str], *, action: str) -> dict[str, Any]:
         cookies = self.api_client.get_cookies()
         version, current_list = download_self_stocks_v1(cookies)
 
-        parsed_new: List[Tuple[str, str]] = []
+        parsed_new: list[tuple[str, str]] = []
         for sym in symbols:
             item_code, api_type = self._parse_symbol(sym)
             parsed_new.append((item_code, api_type))
 
-        current_map = {code: (code, mtype) for code, mtype in current_list}
-        merged_map: Dict[str, Tuple[str, str]] = {}
+        {code: (code, mtype) for code, mtype in current_list}
+        merged_map: dict[str, tuple[str, str]] = {}
 
         if action == "add":
             for code, mtype in current_list:
@@ -609,7 +628,9 @@ class PortfolioManager:
         merged_list = list(merged_map.values())
         result = modify_self_stocks_v1(cookies, merged_list, version)
 
-        updated_items = [StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list]
+        updated_items = [
+            StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list
+        ]
         self._self_stock_cache = StockGroup(
             name=SELF_STOCK_DEFAULT_NAME,
             group_id=SELF_STOCK_GROUP_ID,
@@ -618,9 +639,14 @@ class PortfolioManager:
         self._persist_self_stock_cache()
         return result
 
-    def _batch_mutate_group(self, group_identifier: str, symbols: List[str], *, action: str) -> Dict[str, Any]:
+    def _batch_mutate_group(
+        self, group_identifier: str, symbols: list[str], *, action: str
+    ) -> dict[str, Any]:
         if not self._auth_params:
-            raise THSAPIError("批量操作", "缺少 multiStorage 凭据（sessionid/token），自定义分组的批量操作需要账号密码登录")
+            raise THSAPIError(
+                "批量操作",
+                "缺少 multiStorage 凭据（sessionid/token），自定义分组的批量操作需要账号密码登录",
+            )
 
         target_group_id = self._get_group_id_by_identifier(group_identifier)
         if not target_group_id:
@@ -635,7 +661,7 @@ class PortfolioManager:
         groups = data.get("groups", [])
         current_version = str(data.get("version", ""))
         group_type = 0
-        current_list: List[Tuple[str, str]] = []
+        current_list: list[tuple[str, str]] = []
 
         for g in groups:
             if g.get("group_name") == group_name:
@@ -646,13 +672,13 @@ class PortfolioManager:
         if group_type == 0 and not current_list:
             group_type = 0  # new group — server assigns on first upload
 
-        parsed_new: List[Tuple[str, str]] = []
+        parsed_new: list[tuple[str, str]] = []
         for sym in symbols:
             item_code, api_type = self._parse_symbol(sym)
             parsed_new.append((item_code, api_type))
 
-        current_map = {code: (code, mtype) for code, mtype in current_list}
-        merged_map: Dict[str, Tuple[str, str]] = {}
+        {code: (code, mtype) for code, mtype in current_list}
+        merged_map: dict[str, tuple[str, str]] = {}
 
         if action == "add":
             for code, mtype in current_list:
@@ -677,8 +703,12 @@ class PortfolioManager:
             version=current_version,
         )
 
-        updated_items = [StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list]
-        self._groups_cache[group_name] = StockGroup(name=group_name, group_id=target_group_id, items=updated_items)
+        updated_items = [
+            StockItem(code=code, market=market_abbr(mtype)) for code, mtype in merged_list
+        ]
+        self._groups_cache[group_name] = StockGroup(
+            name=group_name, group_id=target_group_id, items=updated_items
+        )
         self._persist_groups_cache()
         return result
 

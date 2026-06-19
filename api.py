@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -12,15 +12,15 @@ from config import (
     DEFAULT_HEADERS,
     ENDPOINTS,
     GROUP_QUERY_TYPES,
-    SELF_STOCK_HTTP_TIMEOUT,
 )
 from exceptions import THSAPIError, THSNetworkError
-from utils import parse_ths_xml_response
 
 # Re-export protocol modules for backwards compatibility
-from selfstock_v1 import download_self_stocks_v1, modify_self_stocks_v1
-from selfstock_v2 import download_self_stocks, download_self_stocks_v2, modify_self_stock_v2, upload_self_stocks
-from blockstock import download_blockstock, upload_blockstock
+from selfstock_v2 import (
+    download_self_stocks,
+    upload_self_stocks,
+)
+from utils import parse_ths_xml_response
 
 SELFSTOCK_DETAIL_API_URL = "https://ugc.10jqka.com.cn/selfstock_detail"
 SELFSTOCK_DETAIL_TIMEOUT = 10.0
@@ -32,15 +32,17 @@ class FavoriteAPI:
     def __init__(self, client: ApiClient) -> None:
         self._client = client
 
-    def query_groups(self) -> Dict[str, Any]:
-        params: Dict[str, str] = {
+    def query_groups(self) -> dict[str, Any]:
+        params: dict[str, str] = {
             "from": DEFAULT_FROM_PARAM,
             "types": GROUP_QUERY_TYPES,
         }
         response = self._client.get(ENDPOINTS["query_groups"], params=params)
         return self._extract_data(response, "获取分组")
 
-    def add_item(self, group_id: str, item_code: str, api_item_type: str, version: str) -> Dict[str, Any]:
+    def add_item(
+        self, group_id: str, item_code: str, api_item_type: str, version: str
+    ) -> dict[str, Any]:
         return self._item_operation(
             ENDPOINTS["add_item"],
             "添加股票",
@@ -50,7 +52,9 @@ class FavoriteAPI:
             version,
         )
 
-    def delete_item(self, group_id: str, item_code: str, api_item_type: str, version: str) -> Dict[str, Any]:
+    def delete_item(
+        self, group_id: str, item_code: str, api_item_type: str, version: str
+    ) -> dict[str, Any]:
         return self._item_operation(
             ENDPOINTS["delete_item"],
             "删除股票",
@@ -60,7 +64,7 @@ class FavoriteAPI:
             version,
         )
 
-    def add_group(self, name: str, version: str) -> Dict[str, Any]:
+    def add_group(self, name: str, version: str) -> dict[str, Any]:
         payload = {
             "name": name,
             "type": "0",
@@ -72,7 +76,7 @@ class FavoriteAPI:
             "添加分组",
         )
 
-    def delete_group(self, group_id: str, version: str) -> Dict[str, Any]:
+    def delete_group(self, group_id: str, version: str) -> dict[str, Any]:
         payload = {
             "ids": group_id,
         }
@@ -91,7 +95,7 @@ class FavoriteAPI:
         item_code: str,
         api_item_type: str,
         version: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         payload = {
             "id": group_id,
             "content": f"{item_code},{api_item_type}",
@@ -99,13 +103,13 @@ class FavoriteAPI:
         }
         return self._post_with_version(endpoint, payload, version, action_name)
 
-    def share_group(self, share_payload: Dict[str, Any]) -> Dict[str, Any]:
+    def share_group(self, share_payload: dict[str, Any]) -> dict[str, Any]:
         response = self._client.post_form_json(ENDPOINTS["share_group"], data=share_payload)
         return self._extract_data(response, "分享分组")
 
     def download_self_stocks(
         self,
-    ) -> Tuple[Dict[str, Any], List[Tuple[str, str]]]:
+    ) -> tuple[dict[str, Any], list[tuple[str, str]]]:
         return download_self_stocks(self._client.get_cookies())
 
     def upload_self_stocks(
@@ -113,7 +117,7 @@ class FavoriteAPI:
         *,
         op: str,
         stockcode: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return upload_self_stocks(
             self._client.get_cookies(),
             op=op,
@@ -123,10 +127,10 @@ class FavoriteAPI:
     def _post_with_version(
         self,
         endpoint: str,
-        payload: Dict[str, Any],
+        payload: dict[str, Any],
         version: str,
         action_name: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         request_payload = payload.copy()
         request_payload["version"] = str(version)
         request_payload.setdefault("from", DEFAULT_FROM_PARAM)
@@ -134,12 +138,14 @@ class FavoriteAPI:
         return self._extract_data(response, action_name)
 
     @staticmethod
-    def _extract_data(response: Dict[str, Any], action_name: str) -> Dict[str, Any]:
+    def _extract_data(response: dict[str, Any], action_name: str) -> dict[str, Any]:
         if not isinstance(response, dict):
             raise THSAPIError(action_name, "响应格式无效")
         status_code = response.get("status_code")
         if status_code != 0:
-            raise THSAPIError(action_name, response.get("status_msg", "未知业务错误"), str(status_code))
+            raise THSAPIError(
+                action_name, response.get("status_msg", "未知业务错误"), str(status_code)
+            )
         data = response.get("data")
         if data is None:
             raise THSAPIError(action_name, "响应缺少 data 字段")
@@ -150,10 +156,10 @@ class FavoriteAPI:
 
 def download_selfstock_detail(
     userid: str,
-    cookies: Dict[str, str],
+    cookies: dict[str, str],
     *,
     timeout: float = SELFSTOCK_DETAIL_TIMEOUT,
-) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+) -> tuple[str | None, list[dict[str, Any]]]:
     params = {
         "reqtype": "download",
         "app_flag": "0E",
@@ -186,7 +192,7 @@ def download_selfstock_detail(
     return version, detail_data
 
 
-def _decode_detail_blob(detail_blob: str) -> List[Dict[str, Any]]:
+def _decode_detail_blob(detail_blob: str) -> list[dict[str, Any]]:
     if not detail_blob:
         return []
     decoded_bytes = base64.b64decode(detail_blob)

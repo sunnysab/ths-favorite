@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 _PB_WIRETYPE_VARINT = 0
 _PB_WIRETYPE_LEN = 2
 
@@ -15,7 +13,7 @@ def encode_varint(value: int) -> bytes:
     return bytes(buf)
 
 
-def decode_varint(data: bytes, offset: int) -> Tuple[int, int]:
+def decode_varint(data: bytes, offset: int) -> tuple[int, int]:
     value = 0
     shift = 0
     while offset < len(data):

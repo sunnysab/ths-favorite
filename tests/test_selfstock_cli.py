@@ -63,7 +63,9 @@ class SelfstockCliTest(unittest.TestCase):
 
         self.assertEqual(mock_print.call_args_list[0].args[0], "已成功创建分组 '消费'")
         self.assertEqual(mock_print.call_args_list[1].args[0], "已删除分组 '消费'")
-        self.assertEqual(mock_print.call_args_list[2].args[0], "分享链接: https://example.com/share")
+        self.assertEqual(
+            mock_print.call_args_list[2].args[0], "分享链接: https://example.com/share"
+        )
         self.assertEqual(mock_print.call_args_list[3].args[0], "已将 600519.SH 添加到分组 '消费'")
         self.assertEqual(mock_print.call_args_list[4].args[0], "已从分组 '消费' 删除 600519.SH")
 
@@ -79,7 +81,9 @@ class SelfstockCliTest(unittest.TestCase):
     def test_list_groups_renders_aligned_table_with_chinese_content(self):
         manager = Mock()
         manager.get_all_groups.return_value = {
-            "我的自选": StockGroup(name="我的自选", group_id="__selfstock__", items=[object()] * 10),
+            "我的自选": StockGroup(
+                name="我的自选", group_id="__selfstock__", items=[object()] * 10
+            ),
             "消费": StockGroup(name="消费", group_id="g1", items=[object()] * 3),
         }
 
