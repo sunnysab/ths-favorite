@@ -15,8 +15,9 @@
 - 通过同花顺账号密码登录，或显式传入 Cookie
 - 获取所有自选股分组数据，并自动附带 selfstock_detail 接口提供的加入价格/时间
 - 获取“我的自选”列表，并支持将其作为虚拟分组并入结果
-- 添加股票到指定自选股分组
-- 从指定自选股分组删除股票
+- 添加股票到指定自选股分组，支持单只和批量
+- 从指定自选股分组删除股票，支持单只和批量
+- 批量操作一次 API 请求即可完成，无需循环调用
 - 新增或删除自选分组 （by @Kerwin1202）
 - 分享分组生成短期链接 (by @Kerwin1202)
 - 本地缓存自选股数据，减少网络请求
@@ -105,6 +106,21 @@ with PortfolioManager(cookies='userid=...; sessionid=...') as portfolio:
     print(groups.keys())
 ```
 
+批量添加/删除：
+
+```python
+with PortfolioManager() as portfolio:
+    # 传入列表即走批量路径（一次 API 请求）
+    portfolio.add_item_to_group("我的自选", ["600519.SH", "000858.SZ", "300750.SZ"])
+    portfolio.add_item_to_group("消费", ["002415.SZ", "601899.SH"])
+
+    # 删除同样支持批量
+    portfolio.delete_item_from_group("我的自选", ["000001.SZ", "000002.SZ"])
+
+    # 单只用法不变（向后兼容）
+    portfolio.add_item_to_group("消费", "600519.SH")
+```
+
 ## 常用命令
 
 ```bash
@@ -113,11 +129,13 @@ uv run main.py list
 uv run main.py list -g 消费
 uv run main.py self list
 
-# 添加 / 删除股票
+# 添加 / 删除股票（单只）
 uv run main.py stock add 消费 600519.SH
 uv run main.py stock del 消费 600519.SH
-uv run main.py stock add 我的自选 600519.SH
-uv run main.py stock del 我的自选 600519.SH
+
+# 添加 / 删除股票（批量，一次请求）
+uv run main.py stock add 消费 600519.SH 000858.SZ 002415.SZ
+uv run main.py stock del 我的自选 000001.SZ 000002.SZ 300750.SZ
 
 # 分组管理
 uv run main.py group add "长线跟踪"
