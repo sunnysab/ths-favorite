@@ -110,7 +110,7 @@ def _parse_group_payload(data: bytes) -> BlockstockGroup:
                     try:
                         gb = base64.b64decode(gid).decode('gbk')
                         group_name = gb
-                    except Exception:
+                    except (ValueError, TypeError):
                         group_name = gid
 
     return BlockstockGroup(group_name=group_name, group_type=group_type, stock_list=stock_list)
