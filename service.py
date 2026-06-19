@@ -6,12 +6,10 @@ from loguru import logger
 
 from api import (
     FavoriteAPI,
-    download_blockstock,
-    download_self_stocks_v1,
     download_selfstock_detail,
-    modify_self_stocks_v1,
-    upload_blockstock,
 )
+from blockstock import download_blockstock, upload_blockstock
+from selfstock_v1 import download_self_stocks_v1, modify_self_stocks_v1
 from auth import SessionManager
 from client import ApiClient
 from config import (
@@ -124,7 +122,7 @@ class PortfolioManager:
             name: Optional[str] = group_raw.get("name")
             group_id: Optional[str] = group_raw.get("id")
             if not name or not group_id:
-                logger.warning("解析时发现无名称或ID的分组原始数据，已跳过: %s", group_raw)
+                logger.warning("解析时发现无名称或ID的分组原始数据，已跳过: {}", group_raw)
                 continue
 
             items: List[StockItem] = []
@@ -143,7 +141,7 @@ class PortfolioManager:
         if include_self_stocks:
             self_group = self.get_self_stocks(refresh=False, name=self_stocks_name)
             merged[self_group.name] = self_group
-        logger.info("成功获取并处理了 %d 个分组。", len(formatted))
+        logger.info("成功获取并处理了 {} 个分组。", len(formatted))
         return merged
 
     def get_self_stocks(
@@ -172,7 +170,7 @@ class PortfolioManager:
         return group
 
     def add_item_to_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
-        logger.info("尝试添加项目 '%s' 到分组 '%s'...", symbol, group_identifier)
+        logger.info("尝试添加项目 '{}' 到分组 '{}'...", symbol, group_identifier)
         if isinstance(symbol, list):
             if not symbol:
                 raise THSAPIError("添加股票", "股票列表不能为空")
@@ -198,7 +196,7 @@ class PortfolioManager:
         return self._perform_write_operation("添加股票", api_call, update_cache)
 
     def delete_item_from_group(self, group_identifier: str, symbol: Union[str, List[str]]) -> Dict[str, Any]:
-        logger.info("尝试删除项目 '%s' 从分组 '%s'...", symbol, group_identifier)
+        logger.info("尝试删除项目 '{}' 从分组 '{}'...", symbol, group_identifier)
         if isinstance(symbol, list):
             if not symbol:
                 raise THSAPIError("删除股票", "股票列表不能为空")
@@ -278,7 +276,7 @@ class PortfolioManager:
                 result = api_call_factory(version)
             except THSAPIError as exc:
                 if attempt == 0 and self._is_version_conflict_error(exc):
-                    logger.warning("%s 遇到版本冲突，刷新数据后自动重试。", action_name)
+                    logger.warning("{} 遇到版本冲突，刷新数据后自动重试。", action_name)
                     self.get_all_groups(use_cache=False)
                     continue
                 raise
@@ -286,7 +284,7 @@ class PortfolioManager:
             try:
                 cache_updater(result)
             except Exception:
-                logger.exception("%s 成功但更新本地缓存失败，改为触发全量刷新。", action_name)
+                logger.exception("{} 成功但更新本地缓存失败，改为触发全量刷新。", action_name)
                 self.get_all_groups(use_cache=False)
             return result
         raise THSAPIError(action_name, "操作在多次重试后仍失败，请稍后再试。")
@@ -315,7 +313,7 @@ class PortfolioManager:
                 try:
                     price_value = float(price_raw)
                 except (TypeError, ValueError):
-                    logger.debug("无法解析价格 '%s' (%s)", price_raw, entry)
+                    logger.debug("无法解析价格 '{}' ({})", price_raw, entry)
             index[key] = {
                 "price": price_value,
                 "timestamp": entry.get("T"),
@@ -335,7 +333,7 @@ class PortfolioManager:
         try:
             self.refresh_selfstock_detail(force=True)
         except (THSAPIError, THSNetworkError):
-            logger.warning("%s 时刷新 selfstock_detail 失败，继续返回基础结果。", context)
+            logger.warning("{} 时刷新 selfstock_detail 失败，继续返回基础结果。", context)
 
     def get_item_snapshot(self, symbol: str, *, refresh: bool = False) -> Optional[Dict[str, Any]]:
         if refresh or not self._selfstock_detail_map:
@@ -400,7 +398,7 @@ class PortfolioManager:
     def _add_item_to_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
         entry = self._get_group_entry_by_id(group_id)
         if not entry:
-            logger.warning("未在本地缓存中找到 group_id=%s，触发全量刷新以保持一致。", group_id)
+            logger.warning("未在本地缓存中找到 group_id={}，触发全量刷新以保持一致。", group_id)
             self.get_all_groups(use_cache=False)
             return
         _, group = entry
@@ -413,7 +411,7 @@ class PortfolioManager:
     def _remove_item_from_local_cache(self, group_id: str, item_code: str, market_short: Optional[str]) -> None:
         entry = self._get_group_entry_by_id(group_id)
         if not entry:
-            logger.warning("删除股票成功但 group_id=%s 未在缓存中找到，触发全量刷新。", group_id)
+            logger.warning("删除股票成功但 group_id={} 未在缓存中找到，触发全量刷新。", group_id)
             self.get_all_groups(use_cache=False)
             return
         _, group = entry
@@ -435,7 +433,7 @@ class PortfolioManager:
     def _remove_group_from_local_cache(self, group_id: str) -> None:
         entry = self._get_group_entry_by_id(group_id)
         if not entry:
-            logger.warning("删除分组成功但本地无 group_id=%s，执行全量刷新同步。", group_id)
+            logger.warning("删除分组成功但本地无 group_id={}，执行全量刷新同步。", group_id)
             self.get_all_groups(use_cache=False)
             return
         name, _ = entry
@@ -481,7 +479,7 @@ class PortfolioManager:
     def _update_version_from_response_data(self, response_data: Optional[Dict[str, Any]]) -> None:
         if response_data and isinstance(response_data, dict) and "version" in response_data:
             new_version = response_data["version"]
-            logger.debug("自选列表版本号从 %s 更新为 %s", self._current_version, new_version)
+            logger.debug("自选列表版本号从 {} 更新为 {}", self._current_version, new_version)
             self._current_version = new_version
 
     def _ensure_version_available(self) -> str:
@@ -620,12 +618,6 @@ class PortfolioManager:
         self._persist_self_stock_cache()
         return result
 
-    @staticmethod
-    def _derive_group_type(group_name: str) -> int:
-        import hashlib
-        h = hashlib.md5(group_name.encode("gbk")).digest()
-        return (h[0] << 8 | h[1]) % 500
-
     def _batch_mutate_group(self, group_identifier: str, symbols: List[str], *, action: str) -> Dict[str, Any]:
         if not self._auth_params:
             raise THSAPIError("批量操作", "缺少 multiStorage 凭据（sessionid/token），自定义分组的批量操作需要账号密码登录")
@@ -652,7 +644,7 @@ class PortfolioManager:
                 break
 
         if group_type == 0 and not current_list:
-            group_type = self._derive_group_type(group_name)
+            group_type = 0  # new group — server assigns on first upload
 
         parsed_new: List[Tuple[str, str]] = []
         for sym in symbols:

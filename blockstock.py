@@ -1,0 +1,249 @@
+from __future__ import annotations
+
+import base64
+import uuid
+from typing import Any, Dict, List, Tuple
+
+import requests
+
+from _protobuf import decode_varint, field_bytes, field_varint
+from config import (
+    BLOCKSTOCK_APPNAME,
+    DEFAULT_HEADERS,
+    MULTI_STORAGE_DEFAULT_CLIENTTYPE,
+    MULTI_STORAGE_URL,
+    SELF_STOCK_HTTP_TIMEOUT,
+)
+from exceptions import THSAPIError, THSNetworkError
+
+
+def extract_auth_params_from_cookies(cookies: Dict[str, str]) -> Dict[str, str]:
+    import urllib.parse as _urlparse
+    from datetime import datetime
+    import time
+
+    sessionid = ""
+    user_raw = cookies.get("user", "")
+    if user_raw:
+        decoded = _urlparse.unquote(user_raw)
+        text = base64.b64decode(decoded).decode("utf-8", errors="replace")
+        parts = text.split(":")
+        if len(parts) > 17:
+            sessionid = parts[17]
+
+    expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
+    return {"userid": cookies.get("userid", ""), "sessionid": sessionid, "expires": expires}
+
+
+def _encode_blockstock_payload(group_name: str, group_type: int, stock_list: List[Tuple[str, str]]) -> bytes:
+    gbk_bytes = group_name.encode("gbk")
+    group_id_b64 = base64.b64encode(gbk_bytes).decode("ascii")
+
+    codes = "|".join(code for code, _ in stock_list)
+    types = "|".join(mtype for _, mtype in stock_list)
+    stock_str = f"{codes},{types}"
+
+    group_data = (
+        field_bytes(1, group_id_b64.encode("ascii"))
+        + field_bytes(3, stock_str.encode("ascii"))
+    )
+    group_payload = (
+        field_bytes(1, field_varint(1, group_type))
+        + field_bytes(3, group_data)
+    )
+    return field_bytes(1, group_payload)
+
+
+def _parse_blockstock_download(data: bytes) -> Dict[str, Any]:
+    offset = 0
+    result: Dict[str, Any] = {"count": 0, "version": 0, "groups": []}
+
+    while offset < len(data):
+        tag, offset = decode_varint(data, offset)
+        field_number = tag >> 3
+        wire_type = tag & 0x07
+
+        if wire_type == 0:
+            value, offset = decode_varint(data, offset)
+            if field_number == 1:
+                result["count"] = value
+            elif field_number == 2:
+                result["version"] = value
+        elif wire_type == 2:
+            length, offset = decode_varint(data, offset)
+            chunk = data[offset : offset + length]
+            offset += length
+            if field_number == 3:
+                inner = _parse_group_payload(chunk)
+                result["groups"].append(inner)
+
+    return result
+
+
+def _parse_group_payload(data: bytes) -> Dict[str, Any]:
+    offset = 0
+    result: Dict[str, Any] = {"group_type": 0, "group_name": "", "stock_list": []}
+
+    while offset < len(data):
+        tag, offset = decode_varint(data, offset)
+        field_number = tag >> 3
+        wire_type = tag & 0x07
+
+        if wire_type == 0:
+            value, offset = decode_varint(data, offset)
+            if field_number == 1:
+                result["group_type"] = value
+        elif wire_type == 2:
+            length, offset = decode_varint(data, offset)
+            chunk = data[offset : offset + length]
+            offset += length
+            if field_number == 1:
+                inner_tag, _ = decode_varint(chunk, 0)
+                if (inner_tag >> 3) == 1:
+                    value, _ = decode_varint(chunk, 1)
+                    result["group_type"] = value
+            elif field_number == 3:
+                inner = _parse_group_data(chunk)
+                result["stock_list"] = inner.get("stock_list", [])
+                gid = inner.get("group_id")
+                if gid:
+                    try:
+                        gb = base64.b64decode(gid).decode("gbk")
+                        result["group_name"] = gb
+                    except Exception:
+                        result["group_name"] = gid
+
+    return result
+
+
+def _parse_group_data(data: bytes) -> Dict[str, Any]:
+    offset = 0
+    result: Dict[str, Any] = {"group_id": None, "stock_list": []}
+
+    while offset < len(data):
+        tag, offset = decode_varint(data, offset)
+        field_number = tag >> 3
+        wire_type = tag & 0x07
+
+        if wire_type == 2:
+            length, offset = decode_varint(data, offset)
+            chunk = data[offset : offset + length]
+            offset += length
+            if field_number == 1:
+                result["group_id"] = chunk.decode("ascii")
+            elif field_number == 3:
+                raw = chunk.decode("ascii")
+                comma_idx = raw.rfind(",")
+                if comma_idx >= 0:
+                    codes_segment = raw[:comma_idx]
+                    types_segment = raw[comma_idx + 1:]
+                    codes = [c for c in codes_segment.split("|") if c]
+                    type_codes = [t for t in types_segment.split("|") if t]
+                    stock_list: List[Tuple[str, str]] = []
+                    for i, code in enumerate(codes):
+                        mtype = type_codes[i] if i < len(type_codes) else ""
+                        stock_list.append((code, mtype))
+                    result["stock_list"] = stock_list
+
+    return result
+
+
+def download_blockstock(
+    auth_params: Dict[str, str],
+    cookies: Dict[str, str],
+    *,
+    storepath: str = "/",
+    timeout: float = SELF_STOCK_HTTP_TIMEOUT,
+) -> Dict[str, Any]:
+    data: Dict[str, str] = {
+        "reqtype": "download",
+        "userid": auth_params.get("userid", ""),
+        "storepath": storepath,
+        "sessionid": auth_params.get("sessionid", ""),
+        "expires": auth_params.get("expires", ""),
+        "appname": BLOCKSTOCK_APPNAME,
+        "storetype": "2",
+        "clienttype": auth_params.get("clienttype", MULTI_STORAGE_DEFAULT_CLIENTTYPE),
+        "version": "0",
+    }
+    headers = {
+        "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    try:
+        response = requests.post(
+            MULTI_STORAGE_URL,
+            data=data,
+            headers=headers,
+            cookies=cookies,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise THSNetworkError("blockstock download", str(exc)) from exc
+
+    return _parse_blockstock_download(response.content)
+
+
+def upload_blockstock(
+    auth_params: Dict[str, str],
+    cookies: Dict[str, str],
+    group_name: str,
+    group_type: int,
+    stock_list: List[Tuple[str, str]],
+    version: str,
+    *,
+    storepath: str = "/",
+    timeout: float = SELF_STOCK_HTTP_TIMEOUT,
+) -> Dict[str, Any]:
+    boundary = f"----HevoFormBoundary{uuid.uuid4().hex[:10]}"
+    payload_bytes = _encode_blockstock_payload(group_name, group_type, stock_list)
+
+    parts: List[bytes] = []
+    form_fields = [
+        ("appname", BLOCKSTOCK_APPNAME),
+        ("reqtype", "upload"),
+        ("version", str(version)),
+        ("storepath", storepath),
+        ("clienttype", auth_params.get("clienttype", MULTI_STORAGE_DEFAULT_CLIENTTYPE)),
+        ("compresstype", "none"),
+        ("compresstype_upload", "none"),
+        ("compresstype_download", "none"),
+        ("userid", auth_params.get("userid", "")),
+        ("sessionid", auth_params.get("sessionid", "")),
+        ("expires", auth_params.get("expires", "")),
+    ]
+    for name, value in form_fields:
+        parts.append(f"--{boundary}\r\n".encode("ascii"))
+        parts.append(f'Content-Disposition: form-data; name="{name}"\r\n'.encode("ascii"))
+        parts.append("Content-Type: text/plain; charset=US-ASCII\r\n".encode("ascii"))
+        parts.append("Content-Encoding: 8bit\r\n\r\n".encode("ascii"))
+        parts.append(value.encode("ascii"))
+        parts.append(b"\r\n")
+
+    parts.append(f"--{boundary}\r\n".encode("ascii"))
+    parts.append(f'Content-Disposition: form-data; name="uploadFile"; filename="testFileList"\r\n'.encode("ascii"))
+    parts.append("Content-Type: application/octet-stream\r\n".encode("ascii"))
+    parts.append("Content-Encoding: binary\r\n\r\n".encode("ascii"))
+    parts.append(payload_bytes)
+    parts.append(b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("ascii"))
+    body = b"".join(parts)
+
+    headers = {
+        "User-Agent": DEFAULT_HEADERS.get("User-Agent", "hevo"),
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+    try:
+        response = requests.post(
+            MULTI_STORAGE_URL,
+            data=body,
+            headers=headers,
+            cookies=cookies,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise THSNetworkError("blockstock upload", str(exc)) from exc
+
+    return _parse_blockstock_download(response.content)

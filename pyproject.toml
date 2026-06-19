@@ -45,8 +45,10 @@ Repository = "https://github.com/sunnysab/ths-favorite"
 
 [tool.setuptools]
 py-modules = [
+    "_protobuf",
     "api",
     "auth",
+    "blockstock",
     "client",
     "config",
     "constant",
@@ -54,6 +56,8 @@ py-modules = [
     "exceptions",
     "main",
     "models",
+    "selfstock_v1",
+    "selfstock_v2",
     "service",
     "storage",
     "utils",

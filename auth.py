@@ -278,32 +278,19 @@ class SessionManager:
         return self._extract_sessionid_from_cookies(cache_data)
 
     def _extract_sessionid_from_cookies(self, cache_data: Dict[str, Any]) -> Dict[str, str]:
-        import base64 as _b64
-        import urllib.parse as _urlparse
+        from blockstock import extract_auth_params_from_cookies
 
-        userid = ""
-        sessionid = ""
         for _k, entry in cache_data.items():
             cookies = entry.get("cookies", {}) if isinstance(entry, dict) else {}
             userid = str(cookies.get("userid", ""))
-            user_raw = cookies.get("user", "")
-            if user_raw:
-                try:
-                    decoded = _urlparse.unquote(user_raw)
-                    text = _b64.b64decode(decoded).decode("utf-8", errors="replace")
-                    parts = text.split(":")
-                    if len(parts) > 17:
-                        sessionid = parts[17]
-                except Exception:
-                    pass
-            if userid:
-                break
+            if not userid:
+                continue
+            result = extract_auth_params_from_cookies(cookies)
+            if not result.get("userid"):
+                continue
+            return result
 
-        if not userid:
-            raise THSAPIError("认证", "multiStorage 需要有效的登录凭据，请先登录")
-
-        expires = datetime.fromtimestamp(time.time() + 86400).strftime("%Y-%m-%d %H:%M:%S")
-        return {"userid": userid, "sessionid": sessionid, "expires": expires}
+        raise THSAPIError("认证", "multiStorage 需要有效的登录凭据，请先登录")
 
     def _resolve_from_inputs(self) -> Optional[Dict[str, str]]:
         if self._username is None and self._password is None:
