@@ -32,5 +32,6 @@ def query_dynamic_plate(
         raise THSNetworkError('动态分组', str(exc)) from exc
 
     payload = response.json()
-    codes = payload.get('data', {}).get('codes', [])
+    data = payload.get('data')
+    codes = data.get('codes', []) if isinstance(data, dict) else []
     return [StockEntry(str(c['code']), str(c['market'])) for c in codes]
